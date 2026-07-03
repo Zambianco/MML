@@ -4,8 +4,8 @@ from django.shortcuts import render
 
 def home(request: HttpRequest) -> HttpResponse:
     context = {
-        "project_name": "Marco Zero",
-        "project_summary": "Nova base modular para o servidor de biblioteca musical.",
+        "project_name": "My Music Library",
+        "project_summary": "Base modular para o servidor da sua biblioteca musical.",
     }
     return render(request, "core/home.html", context)
 

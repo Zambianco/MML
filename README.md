@@ -1,10 +1,10 @@
-# Marco Zero
+# My Music Library
 
 Nova base do projeto para substituir a arquitetura atual orientada a scripts por um servidor Django modular, executado via Docker Compose.
 
 ## Escopo desta etapa
 
-- isolar a nova versão em `marco_zero/`;
+- isolar a nova versão neste repositório;
 - definir a topologia inicial de serviços;
 - subir um projeto Django com apps separados por responsabilidade;
 - expor uma home simples e um healthcheck;
