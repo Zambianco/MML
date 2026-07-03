@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}Marco Zero{% endblock %}
+
+{% block content %}
+<main class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-body p-5">
+                    <span class="badge text-bg-dark mb-3">Nova versão</span>
+                    <h1 class="display-6 mb-3">{{ project_name }}</h1>
+                    <p class="lead mb-4">{{ project_summary }}</p>
+                    <div class="d-flex gap-3 flex-wrap">
+                        <a class="btn btn-dark" href="/admin/">Admin</a>
+                        <a class="btn btn-outline-dark" href="/api/">API</a>
+                        <a class="btn btn-outline-secondary" href="/health/">Healthcheck</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}
