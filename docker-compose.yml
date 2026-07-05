@@ -41,7 +41,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/', timeout=2)\""]
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8000/mml/health/ || wget -q -O- http://127.0.0.1:8000/health/ || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -65,9 +65,10 @@ services:
     image: nginx:1.27-alpine
     depends_on:
       web:
-        condition: service_healthy
-    ports:
-      - "8080:80"
+        condition: service_started #service_healthy
+    networks:
+      - default
+      - infra_network
     volumes:
       - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
     healthcheck:
@@ -75,6 +76,11 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mml.rule=Host(`147.15.97.170`) && PathPrefix(`/mml`)"
+      - "traefik.http.routers.mml.entrypoints=web"
+      - "traefik.http.services.mml.loadbalancer.server.port=80"
 
   slskd:
     image: slskd/slskd:latest
@@ -89,3 +95,8 @@ volumes:
   postgres_data:
   redis_data:
   slskd_data:
+
+networks:
+  default:
+  infra_network:
+    external: true

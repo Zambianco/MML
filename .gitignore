@@ -1,4 +1,17 @@
+# Django e Python
+*.pyc
 __pycache__/
-*.py[cod]
+db.sqlite3
+media/
+staticfiles/
+
+# Docker e Infraestrutura
 .env
-backups/
+.idea/
+.vscode/
+*.log
+
+# Caso tenha volumes locais salvos dentro da pasta do projeto
+postgres_data/
+redis_data/
+slskd_data/

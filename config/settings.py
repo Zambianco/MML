@@ -16,7 +16,7 @@ def env_list(name: str, default: str = "") -> list[str]:
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "unsafe-development-key")
 DEBUG = env_bool("DJANGO_DEBUG", default=False)
-ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1")
+ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -100,3 +100,8 @@ REST_FRAMEWORK = {
         "rest_framework.renderers.BrowsableAPIRenderer",
     ]
 }
+
+FORCE_SCRIPT_NAME = '/mml'
+USE_X_FORWARDED_HOST = True
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+

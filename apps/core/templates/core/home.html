@@ -12,7 +12,7 @@
                     <h1 class="display-6 mb-3">{{ project_name }}</h1>
                     <p class="lead mb-4">{{ project_summary }}</p>
                     <div class="d-flex gap-3 flex-wrap">
-                        <a class="btn btn-dark" href="/admin/">Admin</a>
+                        <a class="btn btn-dark" href="{% url 'admin:index' %}">Admin</a>
                         <a class="btn btn-outline-dark" href="/api/">API</a>
                         <a class="btn btn-outline-secondary" href="/health/">Healthcheck</a>
                     </div>
