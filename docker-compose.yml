@@ -84,8 +84,10 @@ services:
     image: slskd/slskd:latest
     environment:
       SLSKD_REMOTE_CONFIGURATION: "true"
+      SLSKD_DOWNLOADS_DIR: /downloads
     volumes:
       - slskd_data:/app
+      - ./music:/downloads
     ports:
       - "5030:5030"
 

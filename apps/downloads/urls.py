@@ -1,9 +1,10 @@
 from django.urls import path
 
-from .views import import_detail, import_detail_fragment, import_list, item_download, item_query, item_search, item_transfer, process_round, refresh_status
+from .views import download_files, import_detail, import_detail_fragment, import_list, item_download, item_query, item_search, item_transfer, process_round, refresh_status
 
 urlpatterns = [
     path("", import_list, name="downloads-import-list"),
+    path("arquivos/", download_files, name="downloads-files"),
     path("<int:pk>/", import_detail, name="downloads-import-detail"),
     path("<int:pk>/fragment/", import_detail_fragment, name="downloads-import-detail-fragment"),
     path("<int:pk>/processar/", process_round, name="downloads-process-round"),

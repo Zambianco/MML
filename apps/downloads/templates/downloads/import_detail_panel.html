@@ -5,6 +5,7 @@
     </div>
     <div class="d-flex gap-2">
         <a class="btn btn-outline-dark" href="{% url 'downloads-import-list' %}">Nova importacao</a>
+        <a class="btn btn-outline-dark" href="{% url 'downloads-files' %}">Arquivos baixados</a>
         <a class="btn btn-dark" href="http://localhost:5030" target="_blank" rel="noopener">Abrir slskd</a>
         <a class="btn btn-outline-secondary" href="{% url 'library-dashboard' %}">Biblioteca</a>
     </div>
@@ -56,7 +57,7 @@
 
 <div class="card shadow-sm border-0 mb-4">
     <div class="card-body">
-        <form class="row g-2 align-items-end" method="post" action="{% url 'downloads-process-round' track_import.pk %}">
+        <form class="row g-2 align-items-end" method="post" action="{% url 'downloads-process-round' track_import.pk %}{% if querystring %}?{{ querystring }}{% endif %}">
             {% csrf_token %}
             <div class="col-sm-3">
                 <label class="form-label small text-secondary" for="round-limit">Limite da rodada</label>
@@ -66,9 +67,42 @@
                 <button class="btn btn-dark" type="submit">Buscar e enfileirar</button>
             </div>
         </form>
-        <form class="mt-2" method="post" action="{% url 'downloads-refresh-status' track_import.pk %}">
+        <form class="mt-2" method="post" action="{% url 'downloads-refresh-status' track_import.pk %}{% if querystring %}?{{ querystring }}{% endif %}">
             {% csrf_token %}
             <button class="btn btn-outline-dark btn-sm" type="submit">Atualizar status e tentar proxima fonte</button>
+        </form>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-lg-5">
+                <label class="form-label small text-secondary" for="filter-q">Busca</label>
+                <input class="form-control" id="filter-q" type="search" name="q" value="{{ filters.q }}" placeholder="Nome, artista, album, ISRC, query">
+            </div>
+            <div class="col-sm-4 col-lg-3">
+                <label class="form-label small text-secondary" for="filter-status">Status</label>
+                <select class="form-select" id="filter-status" name="status">
+                    <option value="">Todos</option>
+                    <option value="pending" {% if filters.status == "pending" %}selected{% endif %}>Pendente</option>
+                    <option value="searching" {% if filters.status == "searching" %}selected{% endif %}>Buscando</option>
+                    <option value="downloading" {% if filters.status == "downloading" %}selected{% endif %}>Baixando</option>
+                    <option value="done" {% if filters.status == "done" %}selected{% endif %}>Concluido</option>
+                    <option value="error" {% if filters.status == "error" %}selected{% endif %}>Erro</option>
+                </select>
+            </div>
+            <div class="col-sm-4 col-lg-3">
+                <label class="form-label small text-secondary" for="filter-downloaded">Download</label>
+                <select class="form-select" id="filter-downloaded" name="downloaded">
+                    <option value="">Todos</option>
+                    <option value="yes" {% if filters.downloaded == "yes" %}selected{% endif %}>Com arquivo</option>
+                    <option value="no" {% if filters.downloaded == "no" %}selected{% endif %}>Sem arquivo</option>
+                </select>
+            </div>
+            <div class="col-sm-4 col-lg-1 d-grid">
+                <button class="btn btn-dark" type="submit">Filtrar</button>
+            </div>
         </form>
     </div>
 </div>
@@ -108,7 +142,7 @@
                             <td>{{ item.year|default:"-" }}</td>
                             <td>{{ item.isrc|default:"-" }}</td>
                             <td class="text-break" style="min-width: 260px;">
-                                <form method="post" action="{% url 'downloads-item-query' track_import.pk item.pk %}?page={{ page_obj.number }}">
+                                <form method="post" action="{% url 'downloads-item-query' track_import.pk item.pk %}{% if querystring %}?{{ querystring }}&page={{ page_obj.number }}{% else %}?page={{ page_obj.number }}{% endif %}">
                                     {% csrf_token %}
                                     <div class="d-flex flex-column gap-1">
                                         <div class="d-flex gap-1 flex-wrap">
@@ -132,7 +166,7 @@
                                 {% if item.last_error %}
                                     <div class="small text-danger">{{ item.last_error }}</div>
                                 {% endif %}
-                                <form class="mt-2" method="post" action="{% url 'downloads-item-search' track_import.pk item.pk %}?page={{ page_obj.number }}">
+                                <form class="mt-2" method="post" action="{% url 'downloads-item-search' track_import.pk item.pk %}{% if querystring %}?{{ querystring }}&page={{ page_obj.number }}{% else %}?page={{ page_obj.number }}{% endif %}">
                                     {% csrf_token %}
                                     <button class="btn btn-outline-dark btn-sm" type="submit">Buscar</button>
                                 </form>
@@ -154,7 +188,7 @@
                                 {% if item.download_path %}
                                     <div class="small text-secondary text-break mt-1">{{ item.download_path }}</div>
                                 {% endif %}
-                                <form class="mt-2 d-flex gap-2 flex-wrap" method="post" action="{% url 'downloads-item-transfer' track_import.pk item.pk %}?page={{ page_obj.number }}">
+                                <form class="mt-2 d-flex gap-2 flex-wrap" method="post" action="{% url 'downloads-item-transfer' track_import.pk item.pk %}{% if querystring %}?{{ querystring }}&page={{ page_obj.number }}{% else %}?page={{ page_obj.number }}{% endif %}">
                                     {% csrf_token %}
                                     <button class="btn btn-dark btn-sm" type="submit">Transferir</button>
                                     {% if item.download_path %}
@@ -208,7 +242,7 @@
                         </div>
                     </div>
 
-                    <form class="download-item-query mb-3" method="post" action="{% url 'downloads-item-query' track_import.pk item.pk %}?page={{ page_obj.number }}">
+                    <form class="download-item-query mb-3" method="post" action="{% url 'downloads-item-query' track_import.pk item.pk %}{% if querystring %}?{{ querystring }}&page={{ page_obj.number }}{% else %}?page={{ page_obj.number }}{% endif %}">
                         {% csrf_token %}
                         <label class="form-label small text-secondary mb-1">Query slskd</label>
                         <input class="form-control form-control-sm mb-2" type="text" name="search_query" value="{{ item.search_query }}">
@@ -246,11 +280,11 @@
                     {% endif %}
 
                     <div class="d-flex gap-2 flex-wrap">
-                        <form method="post" action="{% url 'downloads-item-search' track_import.pk item.pk %}?page={{ page_obj.number }}">
+                        <form method="post" action="{% url 'downloads-item-search' track_import.pk item.pk %}{% if querystring %}?{{ querystring }}&page={{ page_obj.number }}{% else %}?page={{ page_obj.number }}{% endif %}">
                             {% csrf_token %}
                             <button class="btn btn-outline-dark btn-sm" type="submit">Buscar</button>
                         </form>
-                        <form method="post" action="{% url 'downloads-item-transfer' track_import.pk item.pk %}?page={{ page_obj.number }}">
+                        <form method="post" action="{% url 'downloads-item-transfer' track_import.pk item.pk %}{% if querystring %}?{{ querystring }}&page={{ page_obj.number }}{% else %}?page={{ page_obj.number }}{% endif %}">
                             {% csrf_token %}
                             <button class="btn btn-dark btn-sm" type="submit">Transferir</button>
                         </form>
@@ -268,7 +302,7 @@
                 <ul class="pagination pagination-sm mb-0">
                     <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
                         {% if page_obj.has_previous %}
-                            <a class="page-link" href="?page={{ page_obj.previous_page_number }}">Anterior</a>
+                            <a class="page-link" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page_obj.previous_page_number }}">Anterior</a>
                         {% else %}
                             <span class="page-link">Anterior</span>
                         {% endif %}
@@ -278,7 +312,7 @@
                     </li>
                     <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
                         {% if page_obj.has_next %}
-                            <a class="page-link" href="?page={{ page_obj.next_page_number }}">Próxima</a>
+                            <a class="page-link" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page_obj.next_page_number }}">Próxima</a>
                         {% else %}
                             <span class="page-link">Próxima</span>
                         {% endif %}

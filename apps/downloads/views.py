@@ -1,14 +1,17 @@
 from pathlib import Path
+from datetime import datetime
+from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.http import FileResponse, HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 from django.conf import settings
+from django.utils import timezone
 from urllib.error import URLError
 
 from .forms import TrackImportUploadForm
@@ -26,9 +29,14 @@ from .services import (
 ITEMS_PER_PAGE = 25
 
 
-def _import_detail_url(track_import: TrackImport, *, page: str | None = None) -> str:
+def _import_detail_url(track_import: TrackImport, *, page: str | None = None, querystring: str = "") -> str:
     url = reverse("downloads-import-detail", args=[track_import.pk])
-    return f"{url}?page={page}" if page else url
+    params = []
+    if querystring:
+        params.append(querystring)
+    if page:
+        params.append(f"page={page}")
+    return f"{url}?{'&'.join(params)}" if params else url
 
 
 def _item_page_url(track_import: TrackImport, item: TrackImportItem) -> str:
@@ -36,6 +44,92 @@ def _item_page_url(track_import: TrackImport, item: TrackImportItem) -> str:
     if item.row_number > 0:
         page = str(((item.row_number - 1) // ITEMS_PER_PAGE) + 1)
     return _import_detail_url(track_import, page=page)
+
+
+def _download_roots() -> list[Path]:
+    roots: list[Path] = []
+    for raw_root in (settings.SLSKD_DOWNLOADS_DIR, settings.MUSIC_STORAGE_ROOT):
+        root = Path(raw_root)
+        if not root.exists():
+            continue
+        resolved = root.resolve()
+        if resolved not in roots:
+            roots.append(resolved)
+    return roots
+
+
+def _downloaded_files() -> list[dict]:
+    files: list[dict] = []
+    seen: set[Path] = set()
+    for root in _download_roots():
+        for candidate in root.rglob("*"):
+            if not candidate.is_file():
+                continue
+            resolved = candidate.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            stat = resolved.stat()
+            files.append(
+                {
+                    "root": root,
+                    "relative_path": resolved.relative_to(root).as_posix(),
+                    "name": resolved.name,
+                    "size": stat.st_size,
+                    "modified_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.get_current_timezone()),
+                }
+            )
+    files.sort(key=lambda item: item["relative_path"].casefold())
+    return files
+
+
+def _filter_downloaded_files(files: list[dict], *, query: str = "", extension: str = "", root: str = "") -> list[dict]:
+    query = query.strip().casefold()
+    extension = extension.strip().casefold()
+    root = root.strip().casefold()
+    filtered: list[dict] = []
+    for file in files:
+        if query and query not in file["relative_path"].casefold() and query not in file["name"].casefold():
+            continue
+        if extension and file["name"].rpartition(".")[2].casefold() != extension.lstrip("."):
+            continue
+        if root and str(file["root"]).casefold() != root:
+            continue
+        filtered.append(file)
+    return filtered
+
+
+def _build_import_filters(request: HttpRequest) -> dict[str, str]:
+    return {
+        "q": str(request.GET.get("q") or "").strip(),
+        "status": str(request.GET.get("status") or "").strip(),
+        "downloaded": str(request.GET.get("downloaded") or "").strip(),
+    }
+
+
+def _preserved_import_querystring(request: HttpRequest) -> str:
+    params = request.GET.copy()
+    params.pop("page", None)
+    return params.urlencode()
+
+
+def _filter_import_items(items, *, query: str = "", status: str = "", downloaded: str = ""):
+    if query:
+        items = items.filter(
+            Q(name__icontains=query)
+            | Q(artists__icontains=query)
+            | Q(album__icontains=query)
+            | Q(isrc__icontains=query)
+            | Q(search_query__icontains=query)
+            | Q(download_path__icontains=query)
+        )
+    if status:
+        items = items.filter(status=status)
+    if downloaded == "yes":
+        items = items.filter(download_path__gt="")
+    elif downloaded == "no":
+        items = items.filter(download_path="")
+    return items
 
 
 def _resolve_local_download_path(download_path: str) -> Path | None:
@@ -75,19 +169,42 @@ def _resolve_local_download_path(download_path: str) -> Path | None:
     return None
 
 
-def _import_detail_context(track_import: TrackImport, *, page: str | None = None, refresh_status: bool = False) -> dict:
+def _import_detail_context(
+    track_import: TrackImport,
+    *,
+    request: HttpRequest | None = None,
+    page: str | None = None,
+    refresh_status: bool = False,
+    filters: dict[str, str] | None = None,
+) -> dict:
     track_import = TrackImport.objects.prefetch_related("items__sources").get(pk=track_import.pk)
     if refresh_status:
-        update_download_statuses(track_import, enqueue_next=False)
-        track_import = TrackImport.objects.prefetch_related("items__sources").get(pk=track_import.pk)
+        try:
+            update_download_statuses(track_import, enqueue_next=False)
+        except URLError as exc:
+            if request is not None:
+                messages.error(request, f"Nao foi possivel conectar ao slskd: {exc.reason}")
+        else:
+            track_import = TrackImport.objects.prefetch_related("items__sources").get(pk=track_import.pk)
     status_counts = dict(track_import.items.values_list("status").annotate(total=Count("id")))
-    items = track_import.items.prefetch_related("sources").all()
+    filters = filters or {"q": "", "status": "", "downloaded": ""}
+    items = _filter_import_items(
+        track_import.items.prefetch_related("sources").all(),
+        query=filters["q"],
+        status=filters["status"],
+        downloaded=filters["downloaded"],
+    )
     page_obj = Paginator(items, ITEMS_PER_PAGE).get_page(page)
+    query_params = {key: value for key, value in filters.items() if value}
+    querystring = urlencode(query_params)
     return {
         "track_import": track_import,
         "items": page_obj,
         "page_obj": page_obj,
         "status_counts": status_counts,
+        "query_params": query_params,
+        "querystring": querystring,
+        "filters": filters,
     }
 
 
@@ -113,12 +230,42 @@ def import_list(request: HttpRequest) -> HttpResponse:
     return render(request, "downloads/import_list.html", context)
 
 
+def download_files(request: HttpRequest) -> HttpResponse:
+    roots = _download_roots()
+    all_files = _downloaded_files()
+    query = str(request.GET.get("q") or "")
+    extension = str(request.GET.get("ext") or "")
+    root = str(request.GET.get("root") or "")
+    files = _filter_downloaded_files(all_files, query=query, extension=extension, root=root)
+    extensions = sorted({f".{file['name'].rpartition('.')[2].casefold()}" for file in all_files if file["name"].rpartition(".")[2]})
+    return render(
+        request,
+        "downloads/download_files.html",
+        {
+            "download_roots": roots,
+            "files": files,
+            "file_count": len(files),
+            "all_file_count": len(all_files),
+            "extensions": extensions,
+            "query": query,
+            "selected_extension": extension,
+            "selected_root": root,
+        },
+    )
+
+
 def import_detail(request: HttpRequest, pk: int) -> HttpResponse:
     track_import = get_object_or_404(TrackImport, pk=pk)
     return render(
         request,
         "downloads/import_detail.html",
-        _import_detail_context(track_import, page=request.GET.get("page"), refresh_status=True),
+        _import_detail_context(
+            track_import,
+            request=request,
+            page=request.GET.get("page"),
+            refresh_status=True,
+            filters=_build_import_filters(request),
+        ),
     )
 
 
@@ -127,7 +274,13 @@ def import_detail_fragment(request: HttpRequest, pk: int) -> HttpResponse:
     return render(
         request,
         "downloads/import_detail_fragment.html",
-        _import_detail_context(track_import, page=request.GET.get("page"), refresh_status=True),
+        _import_detail_context(
+            track_import,
+            request=request,
+            page=request.GET.get("page"),
+            refresh_status=True,
+            filters=_build_import_filters(request),
+        ),
     )
 
 
@@ -144,7 +297,7 @@ def process_round(request: HttpRequest, pk: int) -> HttpResponse:
             request,
             f"Rodada concluida: {summary['searched']} busca(s), {summary['queued']} download(s) enfileirado(s).",
         )
-    return redirect(_import_detail_url(track_import, page=request.GET.get("page")))
+    return redirect(_import_detail_url(track_import, page=request.GET.get("page"), querystring=_preserved_import_querystring(request)))
 
 
 @require_http_methods(["POST"])
@@ -159,7 +312,7 @@ def refresh_status(request: HttpRequest, pk: int) -> HttpResponse:
             request,
             f"Status atualizado: {summary['updated']} item(ns), {summary['done']} concluido(s), {summary['queued_next']} proxima(s) fonte(s).",
         )
-    return redirect(_import_detail_url(track_import, page=request.GET.get("page")))
+    return redirect(_import_detail_url(track_import, page=request.GET.get("page"), querystring=_preserved_import_querystring(request)))
 
 
 @require_http_methods(["POST"])
@@ -174,7 +327,7 @@ def item_search(request: HttpRequest, pk: int, item_pk: int) -> HttpResponse:
         messages.error(request, "Falha ao buscar fontes no slskd.")
     else:
         messages.success(request, f"Busca concluida para a linha {item.row_number}.")
-    return redirect(_import_detail_url(track_import, page=request.GET.get("page")))
+    return redirect(_import_detail_url(track_import, page=request.GET.get("page"), querystring=_preserved_import_querystring(request)))
 
 
 @require_http_methods(["POST"])
@@ -194,7 +347,7 @@ def item_query(request: HttpRequest, pk: int, item_pk: int) -> HttpResponse:
             item.search_query = search_query
             item.save(update_fields=["search_query", "search_query_mode", "updated_at"])
             messages.success(request, f"Query atualizada na linha {item.row_number}.")
-    return redirect(_import_detail_url(track_import, page=request.GET.get("page")))
+    return redirect(_import_detail_url(track_import, page=request.GET.get("page"), querystring=_preserved_import_querystring(request)))
 
 
 @require_http_methods(["POST"])
@@ -211,7 +364,10 @@ def item_transfer(request: HttpRequest, pk: int, item_pk: int) -> HttpResponse:
         messages.error(request, "Falha ao enfileirar download no slskd.")
     else:
         messages.success(request, f"Download enfileirado para a linha {item.row_number}: {source.username}.")
-    return redirect(_item_page_url(track_import, item))
+    page = request.GET.get("page")
+    if not page and item.row_number > 0:
+        page = str(((item.row_number - 1) // ITEMS_PER_PAGE) + 1)
+    return redirect(_import_detail_url(track_import, page=page, querystring=_preserved_import_querystring(request)))
 
 
 def item_download(request: HttpRequest, pk: int, item_pk: int) -> HttpResponse:
@@ -224,5 +380,5 @@ def item_download(request: HttpRequest, pk: int, item_pk: int) -> HttpResponse:
     file_path = _resolve_local_download_path(download_reference)
     if file_path is None:
         messages.error(request, "Arquivo ainda nao esta disponivel no disco do sistema.")
-        return redirect(_item_page_url(track_import, item))
+        return redirect(_import_detail_url(track_import, page=request.GET.get("page"), querystring=_preserved_import_querystring(request)))
     return FileResponse(file_path.open("rb"), as_attachment=True, filename=file_path.name)

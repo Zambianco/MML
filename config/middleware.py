@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.http import HttpResponseRedirect, JsonResponse
+from django.shortcuts import resolve_url
 from django.urls import get_script_prefix, set_script_prefix
 from django.utils.http import url_has_allowed_host_and_scheme
 
@@ -29,6 +30,8 @@ class ScriptNamePrefixMiddleware:
                 request.path_info = stripped
                 request.path = f"{active_prefix}{stripped}"
                 request.META["PATH_INFO"] = stripped
+            else:
+                request.path = f"{active_prefix}{path}"
 
         try:
             return self.get_response(request)
@@ -39,7 +42,6 @@ class ScriptNamePrefixMiddleware:
 class LoginRequiredMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
-        self.login_url = "/login/"
         self.public_paths = {
             "/health/",
             "/login/",
@@ -67,4 +69,4 @@ class LoginRequiredMiddleware:
         ):
             next_url = "/"
 
-        return HttpResponseRedirect(f"{self.login_url}?next={next_url}")
+        return HttpResponseRedirect(f"{resolve_url(settings.LOGIN_URL)}?next={next_url}")

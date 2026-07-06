@@ -83,7 +83,7 @@ class DownloadImportTests(TestCase):
         self.assertContains(response, "45%")
 
     @patch("apps.downloads.views.update_download_statuses")
-    def test_import_detail_refreshes_statuses_and_fragment_polls(self, update_download_statuses):
+    def test_import_detail_refreshes_statuses_without_polling(self, update_download_statuses):
         track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
         TrackImportItem.objects.create(
             track_import=track_import,
@@ -96,12 +96,31 @@ class DownloadImportTests(TestCase):
         )
 
         response = self.client.get(reverse("downloads-import-detail", args=[track_import.pk]), HTTP_HOST="localhost")
-        fragment = self.client.get(reverse("downloads-import-detail-fragment", args=[track_import.pk]), HTTP_HOST="localhost")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(fragment.status_code, 200)
-        self.assertEqual(update_download_statuses.call_count, 2)
-        self.assertContains(fragment, 'hx-trigger="load, every 10s"')
+        self.assertEqual(update_download_statuses.call_count, 1)
+        self.assertNotContains(response, "hx-get=")
+        self.assertNotContains(response, "every 10s")
+
+    @patch("apps.downloads.views.update_download_statuses")
+    def test_import_detail_handles_slskd_connection_error(self, update_download_statuses):
+        update_download_statuses.side_effect = URLError("Connection refused")
+        track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
+        TrackImportItem.objects.create(
+            track_import=track_import,
+            row_number=1,
+            artists="Xandria",
+            name="Now & Forever",
+            search_query="Xandria Now Forever",
+            status=TrackImportItem.STATUS_DOWNLOADING,
+            download_progress=45,
+        )
+
+        response = self.client.get(reverse("downloads-import-detail", args=[track_import.pk]), HTTP_HOST="localhost")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Nao foi possivel conectar ao slskd: Connection refused")
+        self.assertContains(response, "Fila de downloads")
 
     def test_import_detail_shows_round_actions(self):
         track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
@@ -140,6 +159,37 @@ class DownloadImportTests(TestCase):
         self.assertContains(response, "Regenerar")
         self.assertContains(response, "Transferir")
         self.assertContains(response, "Download")
+
+    def test_import_detail_filters_items(self):
+        track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=2)
+        TrackImportItem.objects.create(
+            track_import=track_import,
+            row_number=1,
+            artists="Elysion",
+            name="Fairytale",
+            search_query="Elysion Fairytale",
+            status=TrackImportItem.STATUS_DONE,
+            download_path="ready/file.flac",
+        )
+        TrackImportItem.objects.create(
+            track_import=track_import,
+            row_number=2,
+            artists="Xandria",
+            name="Now & Forever",
+            search_query="Xandria Now Forever",
+            status=TrackImportItem.STATUS_DOWNLOADING,
+        )
+
+        response = self.client.get(
+            reverse("downloads-import-detail", args=[track_import.pk]),
+            {"q": "Fairytale", "status": "done", "downloaded": "yes"},
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Fairytale")
+        self.assertNotContains(response, "Now & Forever")
+        self.assertContains(response, "Com arquivo")
 
     def test_import_detail_paginates_items(self):
         track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=26)
@@ -328,6 +378,25 @@ class DownloadImportTests(TestCase):
 
             self.assertEqual(response.status_code, 200)
             self.assertEqual(b"".join(response.streaming_content), b"audio-bytes")
+
+    def test_download_files_page_lists_files(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage_root = Path(temp_dir) / "music"
+            nested_dir = storage_root / "nested"
+            nested_dir.mkdir(parents=True)
+            (nested_dir / "track.flac").write_bytes(b"audio-bytes")
+            (nested_dir / "track.mp3").write_bytes(b"audio-bytes")
+
+            with override_settings(MUSIC_STORAGE_ROOT=storage_root, SLSKD_DOWNLOADS_DIR=storage_root):
+                response = self.client.get(
+                    reverse("downloads-files"),
+                    {"q": "track", "ext": ".flac", "root": str(storage_root)},
+                    HTTP_HOST="localhost",
+                )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, "nested/track.flac")
+            self.assertNotContains(response, "nested/track.mp3")
 
     def test_item_query_update_manual(self):
         track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)

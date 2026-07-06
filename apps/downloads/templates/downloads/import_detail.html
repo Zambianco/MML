@@ -188,8 +188,6 @@
 
 {% block content %}
 <main class="container app-page py-4">
-    <div id="downloads-refresh-panel" hx-get="{% url 'downloads-import-detail-fragment' track_import.pk %}?page={{ page_obj.number }}" hx-trigger="load, every 10s" hx-swap="outerHTML">
-        {% include "downloads/import_detail_panel.html" %}
-    </div>
+    {% include "downloads/import_detail_panel.html" %}
 </main>
 {% endblock %}

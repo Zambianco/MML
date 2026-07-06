@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}Arquivos baixados | My Music Library{% endblock %}
+
+{% block content %}
+<main class="container app-page py-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+        <div>
+            <p class="page-kicker mb-1">Downloads</p>
+            <h1 class="h3 mb-0 fw-bold">Arquivos baixados</h1>
+            <p class="text-secondary small mt-1 mb-0">Visao direta do que existe no disco do sistema.</p>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <a class="btn btn-outline-dark btn-sm" href="{% url 'downloads-import-list' %}">Importacoes</a>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <div class="text-secondary small">Arquivos encontrados</div>
+                    <div class="display-6">{{ file_count }}</div>
+                    {% if all_file_count != file_count %}
+                        <div class="small text-secondary">de {{ all_file_count }} total(is)</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-md-8">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <div class="text-secondary small mb-2">Pastas verificadas</div>
+                    {% if download_roots %}
+                        <div class="d-flex flex-wrap gap-2">
+                            {% for root in download_roots %}
+                                <span class="badge text-bg-light border">{{ root }}</span>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="text-secondary small">Nenhuma pasta configurada.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+            <form method="get" class="row g-3 align-items-end">
+                <div class="col-lg-5">
+                    <label class="form-label small text-secondary" for="filter-q">Busca</label>
+                    <input class="form-control" id="filter-q" type="search" name="q" value="{{ query }}" placeholder="Nome ou caminho">
+                </div>
+                <div class="col-sm-4 col-lg-3">
+                    <label class="form-label small text-secondary" for="filter-ext">Extensao</label>
+                    <select class="form-select" id="filter-ext" name="ext">
+                        <option value="">Todas</option>
+                        {% for ext in extensions %}
+                            <option value="{{ ext }}" {% if ext == selected_extension %}selected{% endif %}>{{ ext }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-sm-4 col-lg-3">
+                    <label class="form-label small text-secondary" for="filter-root">Pasta</label>
+                    <select class="form-select" id="filter-root" name="root">
+                        <option value="">Todas</option>
+                        {% for root in download_roots %}
+                            <option value="{{ root }}" {% if root|stringformat:"s" == selected_root %}selected{% endif %}>{{ root }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-sm-4 col-lg-1 d-grid">
+                    <button class="btn btn-dark" type="submit">Filtrar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
+                <h2 class="h5 mb-0">Conteudo</h2>
+                <div class="small text-secondary">Formato de pasta simples</div>
+            </div>
+            {% if files %}
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Caminho</th>
+                                <th>Arquivo</th>
+                                <th>Tamanho</th>
+                                <th>Modificado</th>
+                                <th>Origem</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for file in files %}
+                                <tr>
+                                    <td class="text-break">
+                                        <i class="bi bi-file-earmark-music me-2 text-secondary"></i>{{ file.relative_path }}
+                                    </td>
+                                    <td class="text-break">{{ file.name }}</td>
+                                    <td>{{ file.size|filesizeformat }}</td>
+                                    <td>{{ file.modified_at|date:"d/m/Y H:i:s" }}</td>
+                                    <td class="text-break small text-secondary">{{ file.root }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="text-center py-5">
+                    <i class="bi bi-folder2-open text-secondary d-block mb-2" style="font-size: 1.75rem;"></i>
+                    <p class="mb-0 text-secondary">Nenhum arquivo encontrado nas pastas configuradas.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</main>
+{% endblock %}

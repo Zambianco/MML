@@ -45,9 +45,14 @@
             <h1 class="h3 mb-0 fw-bold">Importar CSV</h1>
             <p class="text-secondary small mt-1 mb-0">Suba lotes de faixas e acompanhe as importacoes recentes no mesmo fluxo visual da fila de downloads.</p>
         </div>
-        <a class="btn btn-outline-dark btn-sm" href="{% url 'library-dashboard' %}">
-            <i class="bi bi-collection me-1"></i>Biblioteca
-        </a>
+        <div class="d-flex gap-2 flex-wrap">
+            <a class="btn btn-outline-dark btn-sm" href="{% url 'downloads-files' %}">
+                <i class="bi bi-folder2-open me-1"></i>Arquivos baixados
+            </a>
+            <a class="btn btn-outline-dark btn-sm" href="{% url 'library-dashboard' %}">
+                <i class="bi bi-collection me-1"></i>Biblioteca
+            </a>
+        </div>
     </div>
 
     {% if messages %}
