@@ -2,9 +2,193 @@
 
 {% block title %}Acompanhar Downloads | My Music Library{% endblock %}
 
+{% block extra_head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<style>
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: var(--app-accent) var(--app-bg-secondary);
+    }
+
+    ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: var(--app-bg-secondary);
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background: var(--app-accent);
+        border-radius: 3px;
+    }
+
+    .status-card {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .status-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6) !important;
+    }
+
+    .status-icon {
+        width: 48px;
+        height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        border-radius: 999px;
+    }
+
+    .tracking-wide {
+        letter-spacing: 0.04em;
+    }
+
+    .downloads-subtitle {
+        max-width: 46rem;
+    }
+
+    .query-input-group {
+        min-width: 240px;
+    }
+
+    .query-input-group .form-control-sm {
+        font-size: 0.75rem;
+        font-family: "SF Mono", "Fira Code", monospace;
+    }
+
+    .badge-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        padding: 0.35rem 0.75rem;
+        border-radius: 999px;
+        font-size: 0.7rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    .badge-status.status-pending {
+        background: rgba(255, 193, 7, 0.15);
+        color: #ffd93d;
+    }
+
+    .badge-status.status-searching {
+        background: rgba(108, 117, 125, 0.15);
+        color: #adb5bd;
+    }
+
+    .badge-status.status-downloading {
+        background: rgba(13, 110, 253, 0.15);
+        color: #6ea8fe;
+    }
+
+    .badge-status.status-done {
+        background: rgba(25, 135, 84, 0.15);
+        color: #75b798;
+    }
+
+    .badge-status.status-error {
+        background: rgba(220, 53, 69, 0.15);
+        color: #ea868f;
+    }
+
+    .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: currentColor;
+    }
+
+    .table-scroll-wrapper {
+        position: relative;
+    }
+
+    .table-scroll-wrapper::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: 36px;
+        background: linear-gradient(to left, var(--app-bg-card), transparent);
+        pointer-events: none;
+    }
+
+    .downloads-table td {
+        min-width: 90px;
+    }
+
+    .downloads-table td:nth-child(2) {
+        min-width: 220px;
+    }
+
+    .downloads-table td:nth-child(3),
+    .downloads-table td:nth-child(4),
+    .downloads-table td:nth-child(7),
+    .downloads-table td:nth-child(8),
+    .downloads-table td:nth-child(9),
+    .downloads-table td:nth-child(10) {
+        min-width: 180px;
+    }
+
+    .downloads-table td:nth-child(11) {
+        min-width: 130px;
+    }
+
+    .download-item-card {
+        border: 1px solid var(--app-border);
+        border-radius: 1rem;
+        background: rgba(255, 255, 255, 0.02);
+    }
+
+    .download-item-meta {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.75rem;
+    }
+
+    .download-item-query .form-control-sm {
+        font-size: 0.78rem;
+    }
+
+    .pagination {
+        --bs-pagination-bg: transparent;
+        --bs-pagination-border-color: var(--app-border);
+        --bs-pagination-color: var(--app-text-primary);
+        --bs-pagination-hover-bg: rgba(255, 255, 255, 0.06);
+        --bs-pagination-hover-color: var(--app-accent);
+        --bs-pagination-active-bg: var(--app-accent);
+        --bs-pagination-active-border-color: var(--app-accent);
+        --bs-pagination-active-color: #0f0a0a;
+        --bs-pagination-disabled-bg: transparent;
+        --bs-pagination-disabled-color: var(--app-text-muted);
+    }
+
+    @media (max-width: 768px) {
+        .status-icon {
+            width: 40px;
+            height: 40px;
+        }
+
+        .query-input-group {
+            min-width: 180px;
+        }
+
+        .download-item-meta {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <main class="container app-page py-4">
-    <div id="downloads-refresh-panel" hx-get="{% url 'downloads-import-detail-fragment' track_import.pk %}" hx-trigger="load, every 10s" hx-swap="outerHTML">
+    <div id="downloads-refresh-panel" hx-get="{% url 'downloads-import-detail-fragment' track_import.pk %}?page={{ page_obj.number }}" hx-trigger="load, every 10s" hx-swap="outerHTML">
         {% include "downloads/import_detail_panel.html" %}
     </div>
 </main>

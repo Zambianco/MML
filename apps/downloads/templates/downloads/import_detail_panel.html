@@ -75,8 +75,13 @@
 
 <div class="card shadow-sm border-0">
     <div class="card-body">
-        <h2 class="h5 mb-3">Fila de downloads</h2>
-        <div class="table-responsive">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+            <h2 class="h5 mb-0">Fila de downloads</h2>
+            <div class="small text-secondary">
+                Mostrando {{ page_obj.start_index }}-{{ page_obj.end_index }} de {{ page_obj.paginator.count }}
+            </div>
+        </div>
+        <div class="table-responsive d-none d-lg-block">
             <table class="table table-sm align-middle mb-0">
                 <thead>
                     <tr>
@@ -103,7 +108,7 @@
                             <td>{{ item.year|default:"-" }}</td>
                             <td>{{ item.isrc|default:"-" }}</td>
                             <td class="text-break" style="min-width: 260px;">
-                                <form method="post" action="{% url 'downloads-item-query' track_import.pk item.pk %}">
+                                <form method="post" action="{% url 'downloads-item-query' track_import.pk item.pk %}?page={{ page_obj.number }}">
                                     {% csrf_token %}
                                     <div class="d-flex flex-column gap-1">
                                         <div class="d-flex gap-1 flex-wrap">
@@ -127,7 +132,7 @@
                                 {% if item.last_error %}
                                     <div class="small text-danger">{{ item.last_error }}</div>
                                 {% endif %}
-                                <form class="mt-2" method="post" action="{% url 'downloads-item-search' track_import.pk item.pk %}">
+                                <form class="mt-2" method="post" action="{% url 'downloads-item-search' track_import.pk item.pk %}?page={{ page_obj.number }}">
                                     {% csrf_token %}
                                     <button class="btn btn-outline-dark btn-sm" type="submit">Buscar</button>
                                 </form>
@@ -149,9 +154,14 @@
                                 {% if item.download_path %}
                                     <div class="small text-secondary text-break mt-1">{{ item.download_path }}</div>
                                 {% endif %}
-                                <form class="mt-2" method="post" action="{% url 'downloads-item-download' track_import.pk item.pk %}">
+                                <form class="mt-2 d-flex gap-2 flex-wrap" method="post" action="{% url 'downloads-item-transfer' track_import.pk item.pk %}?page={{ page_obj.number }}">
                                     {% csrf_token %}
-                                    <button class="btn btn-dark btn-sm" type="submit">Baixar</button>
+                                    <button class="btn btn-dark btn-sm" type="submit">Transferir</button>
+                                    {% if item.download_path %}
+                                        <a class="btn btn-outline-dark btn-sm" href="{% url 'downloads-item-download' track_import.pk item.pk %}">Download</a>
+                                    {% else %}
+                                        <span class="btn btn-outline-dark btn-sm disabled" aria-disabled="true">Download</span>
+                                    {% endif %}
                                 </form>
                             </td>
                             <td>{{ item.get_status_display }}</td>
@@ -160,5 +170,121 @@
                 </tbody>
             </table>
         </div>
+        <div class="d-grid gap-3 d-lg-none">
+            {% for item in items %}
+                <article class="download-item-card p-3">
+                    <div class="d-flex justify-content-between align-items-start gap-3 mb-2">
+                        <div>
+                            <div class="small text-secondary">Linha {{ item.row_number }}</div>
+                            <strong class="d-block">{{ item.name }}</strong>
+                            <div class="small text-secondary">{{ item.artists }}</div>
+                        </div>
+                        <span class="badge-status status-{{ item.status }}">
+                            <span class="status-dot"></span>{{ item.get_status_display }}
+                        </span>
+                    </div>
+
+                    <div class="download-item-meta small mb-3">
+                        <div>
+                            <div class="text-secondary">Album</div>
+                            <div>{{ item.album|default:"-" }}</div>
+                        </div>
+                        <div>
+                            <div class="text-secondary">Ano</div>
+                            <div>{{ item.year|default:"-" }}</div>
+                        </div>
+                        <div>
+                            <div class="text-secondary">ISRC</div>
+                            <div>{{ item.isrc|default:"-" }}</div>
+                        </div>
+                        <div>
+                            <div class="text-secondary">Busca</div>
+                            {% if item.search_slskd_id %}
+                                <div>{{ item.search_state|default:"-" }}</div>
+                                <div class="small text-secondary">{{ item.search_response_count }} resposta(s)</div>
+                            {% else %}
+                                <div>-</div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <form class="download-item-query mb-3" method="post" action="{% url 'downloads-item-query' track_import.pk item.pk %}?page={{ page_obj.number }}">
+                        {% csrf_token %}
+                        <label class="form-label small text-secondary mb-1">Query slskd</label>
+                        <input class="form-control form-control-sm mb-2" type="text" name="search_query" value="{{ item.search_query }}">
+                        <div class="d-flex gap-2 flex-wrap">
+                            <button class="btn btn-outline-secondary btn-sm" type="button" onclick="navigator.clipboard.writeText(this.closest('form').querySelector('input[name=search_query]').value)">Copiar</button>
+                            <button class="btn btn-outline-dark btn-sm" type="submit">Salvar</button>
+                            <button class="btn btn-outline-dark btn-sm" type="submit" name="query_action" value="regenerate">Regenerar</button>
+                        </div>
+                    </form>
+
+                    <div class="mb-3">
+                        <div class="small text-secondary mb-1">Fontes</div>
+                        {% for source in item.sources.all|slice:":3" %}
+                            <div class="small mb-1">
+                                #{{ source.rank }} {{ source.extension|default:"?" }} score {{ source.score|floatformat:0 }}
+                                <span class="text-secondary">{{ source.username }}</span>
+                            </div>
+                        {% empty %}
+                            <div class="small text-secondary">Nenhuma fonte encontrada.</div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="small text-secondary mb-1">Download</div>
+                        <div class="progress mb-2" role="progressbar" aria-label="Download de {{ item.name }}" aria-valuenow="{{ item.download_progress }}" aria-valuemin="0" aria-valuemax="100">
+                            <div class="progress-bar bg-dark" style="width: {{ item.download_progress }}%">{{ item.download_progress }}%</div>
+                        </div>
+                        {% if item.download_path %}
+                            <div class="small text-secondary text-break">{{ item.download_path }}</div>
+                        {% endif %}
+                    </div>
+
+                    {% if item.last_error %}
+                        <div class="small text-danger mb-3">{{ item.last_error }}</div>
+                    {% endif %}
+
+                    <div class="d-flex gap-2 flex-wrap">
+                        <form method="post" action="{% url 'downloads-item-search' track_import.pk item.pk %}?page={{ page_obj.number }}">
+                            {% csrf_token %}
+                            <button class="btn btn-outline-dark btn-sm" type="submit">Buscar</button>
+                        </form>
+                        <form method="post" action="{% url 'downloads-item-transfer' track_import.pk item.pk %}?page={{ page_obj.number }}">
+                            {% csrf_token %}
+                            <button class="btn btn-dark btn-sm" type="submit">Transferir</button>
+                        </form>
+                        {% if item.download_path %}
+                            <a class="btn btn-outline-dark btn-sm" href="{% url 'downloads-item-download' track_import.pk item.pk %}">Download</a>
+                        {% else %}
+                            <span class="btn btn-outline-dark btn-sm disabled" aria-disabled="true">Download</span>
+                        {% endif %}
+                    </div>
+                </article>
+            {% endfor %}
+        </div>
+        {% if page_obj.has_other_pages %}
+            <nav class="mt-3" aria-label="Paginação da fila de downloads">
+                <ul class="pagination pagination-sm mb-0">
+                    <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
+                        {% if page_obj.has_previous %}
+                            <a class="page-link" href="?page={{ page_obj.previous_page_number }}">Anterior</a>
+                        {% else %}
+                            <span class="page-link">Anterior</span>
+                        {% endif %}
+                    </li>
+                    <li class="page-item disabled">
+                        <span class="page-link">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
+                    </li>
+                    <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
+                        {% if page_obj.has_next %}
+                            <a class="page-link" href="?page={{ page_obj.next_page_number }}">Próxima</a>
+                        {% else %}
+                            <span class="page-link">Próxima</span>
+                        {% endif %}
+                    </li>
+                </ul>
+            </nav>
+        {% endif %}
     </div>
 </div>

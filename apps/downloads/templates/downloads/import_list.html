@@ -2,14 +2,52 @@
 
 {% block title %}Importar CSV | My Music Library{% endblock %}
 
+{% block extra_head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<style>
+    .status-icon {
+        width: 48px;
+        height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        border-radius: 999px;
+    }
+
+    .imports-upload-card {
+        background:
+            linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent),
+            var(--app-bg-card);
+    }
+
+    .imports-note {
+        border: 1px solid var(--app-border);
+        border-radius: 0.85rem;
+        background: rgba(255, 255, 255, 0.03);
+    }
+
+    .imports-note code {
+        color: var(--app-accent);
+    }
+
+    .imports-table td:first-child {
+        min-width: 240px;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <main class="container app-page py-4">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
         <div>
-            <p class="page-kicker mb-1">Downloads</p>
-            <h1 class="h3 mb-0">Importar CSV</h1>
+            <p class="page-kicker mb-1"><i class="bi bi-cloud-upload me-1"></i>Downloads</p>
+            <h1 class="h3 mb-0 fw-bold">Importar CSV</h1>
+            <p class="text-secondary small mt-1 mb-0">Suba lotes de faixas e acompanhe as importacoes recentes no mesmo fluxo visual da fila de downloads.</p>
         </div>
-        <a class="btn btn-outline-dark" href="{% url 'library-dashboard' %}">Biblioteca</a>
+        <a class="btn btn-outline-dark btn-sm" href="{% url 'library-dashboard' %}">
+            <i class="bi bi-collection me-1"></i>Biblioteca
+        </a>
     </div>
 
     {% if messages %}
@@ -22,10 +60,23 @@
 
     <div class="row g-4">
         <section class="col-lg-5">
-            <div class="card shadow-sm border-0">
-                <div class="card-body">
-                    <h2 class="h5 mb-3">Nova importacao</h2>
-                    <p class="text-secondary small">Cabecalho aceito: Nome;Artista(s);Album;Ano;ISRC</p>
+            <div class="card shadow-sm border-0 imports-upload-card h-100">
+                <div class="card-body p-4">
+                    <div class="d-flex align-items-center gap-3 mb-3">
+                        <div class="status-icon bg-secondary bg-opacity-10">
+                            <i class="bi bi-file-earmark-arrow-up fs-4"></i>
+                        </div>
+                        <div>
+                            <h2 class="h5 mb-1">Nova importacao</h2>
+                            <p class="text-secondary small mb-0">Envie o CSV e gere a fila inicial de downloads.</p>
+                        </div>
+                    </div>
+
+                    <div class="imports-note p-3 mb-4">
+                        <div class="small text-secondary mb-1">Cabecalho esperado</div>
+                        <code>Nome;Artista(s);Album;Ano;ISRC</code>
+                    </div>
+
                     <form method="post" enctype="multipart/form-data">
                         {% csrf_token %}
                         <div class="mb-3">
@@ -35,19 +86,27 @@
                                 <div class="text-danger small mt-2">{{ form.file.errors|join:", " }}</div>
                             {% endif %}
                         </div>
-                        <button class="btn btn-dark w-100" type="submit">Importar</button>
+                        <button class="btn btn-dark w-100" type="submit">
+                            <i class="bi bi-upload me-1"></i>Importar
+                        </button>
                     </form>
                 </div>
             </div>
         </section>
 
         <section class="col-lg-7">
-            <div class="card shadow-sm border-0">
-                <div class="card-body">
-                    <h2 class="h5 mb-3">Importacoes recentes</h2>
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body p-4">
+                    <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
+                        <div>
+                            <h2 class="h5 mb-1">Importacoes recentes</h2>
+                            <p class="text-secondary small mb-0">Acesse uma carga anterior para revisar a fila, ajustar queries e acompanhar as transferencias.</p>
+                        </div>
+                        <span class="badge text-bg-light">{{ imports|length }} item(ns)</span>
+                    </div>
                     {% if imports %}
                         <div class="table-responsive">
-                            <table class="table table-sm align-middle mb-0">
+                            <table class="table table-sm align-middle mb-0 imports-table">
                                 <thead>
                                     <tr>
                                         <th>Arquivo</th>
@@ -59,8 +118,8 @@
                                     {% for track_import in imports %}
                                         <tr>
                                             <td>
-                                                <a class="link-dark" href="{% url 'downloads-import-detail' track_import.pk %}">
-                                                    {{ track_import.source_name }}
+                                                <a class="link-dark fw-semibold" href="{% url 'downloads-import-detail' track_import.pk %}">
+                                                    <i class="bi bi-file-earmark-music me-2 text-secondary"></i>{{ track_import.source_name }}
                                                 </a>
                                             </td>
                                             <td>{{ track_import.item_count }}</td>
@@ -71,7 +130,10 @@
                             </table>
                         </div>
                     {% else %}
-                        <p class="text-secondary mb-0">Nenhuma importacao realizada.</p>
+                        <div class="imports-note p-4 text-center">
+                            <i class="bi bi-disc text-secondary d-block mb-2" style="font-size: 1.75rem;"></i>
+                            <p class="text-secondary mb-0">Nenhuma importacao realizada.</p>
+                        </div>
                     {% endif %}
                 </div>
             </div>

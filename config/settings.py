@@ -113,6 +113,7 @@ USE_TZ = True
 STATIC_URL = f"{URL_PREFIX}/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MUSIC_STORAGE_ROOT = Path(os.getenv("MUSIC_STORAGE_ROOT", BASE_DIR / "music"))
+SLSKD_DOWNLOADS_DIR = Path(os.getenv("SLSKD_DOWNLOADS_DIR", str(MUSIC_STORAGE_ROOT)))
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

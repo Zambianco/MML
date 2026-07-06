@@ -1,3 +1,6 @@
+import tempfile
+from pathlib import Path
+
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
@@ -131,10 +134,38 @@ class DownloadImportTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, reverse("downloads-item-search", args=[track_import.pk, item.pk]))
-        self.assertContains(response, reverse("downloads-item-download", args=[track_import.pk, item.pk]))
+        self.assertContains(response, reverse("downloads-item-transfer", args=[track_import.pk, item.pk]))
         self.assertContains(response, "Copiar")
         self.assertContains(response, "Salvar")
         self.assertContains(response, "Regenerar")
+        self.assertContains(response, "Transferir")
+        self.assertContains(response, "Download")
+
+    def test_import_detail_paginates_items(self):
+        track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=26)
+        TrackImportItem.objects.bulk_create(
+            [
+                TrackImportItem(
+                    track_import=track_import,
+                    row_number=index,
+                    artists="Artist",
+                    name=f"Track {index:02d}",
+                    search_query=f"Artist Track {index:02d}",
+                )
+                for index in range(1, 27)
+            ]
+        )
+
+        response = self.client.get(
+            reverse("downloads-import-detail", args=[track_import.pk]),
+            {"page": 2},
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Página 2 de 2")
+        self.assertContains(response, "Track 26")
+        self.assertNotContains(response, "Track 01")
 
     @patch("apps.downloads.views.process_download_round")
     def test_process_round_uses_limit(self, process_download_round):
@@ -197,7 +228,7 @@ class DownloadImportTests(TestCase):
         sleep.assert_not_called()
 
     @patch("apps.downloads.views.enqueue_best_available_source")
-    def test_item_download_uses_row(self, enqueue_best_available_source):
+    def test_item_transfer_uses_row(self, enqueue_best_available_source):
         track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
         item = TrackImportItem.objects.create(
             track_import=track_import,
@@ -209,12 +240,94 @@ class DownloadImportTests(TestCase):
         enqueue_best_available_source.return_value = item.sources.model(item=item, rank=1, username="user", remote_filename="file.flac")
 
         response = self.client.post(
-            reverse("downloads-item-download", args=[track_import.pk, item.pk]),
+            reverse("downloads-item-transfer", args=[track_import.pk, item.pk]),
             HTTP_HOST="localhost",
         )
 
-        self.assertRedirects(response, reverse("downloads-import-detail", args=[track_import.pk]))
+        self.assertRedirects(response, reverse("downloads-import-detail", args=[track_import.pk]) + "?page=1")
         enqueue_best_available_source.assert_called_once()
+
+    def test_item_download_serves_local_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage_root = Path(temp_dir) / "music"
+            storage_root.mkdir()
+            file_path = storage_root / "file.flac"
+            file_path.write_bytes(b"audio-bytes")
+
+            with override_settings(MUSIC_STORAGE_ROOT=storage_root):
+                track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
+                item = TrackImportItem.objects.create(
+                    track_import=track_import,
+                    row_number=1,
+                    artists="Elysion",
+                    name="Fairytale",
+                    search_query="Elysion Fairytale",
+                    download_path="file.flac",
+                )
+
+                response = self.client.get(
+                    reverse("downloads-item-download", args=[track_import.pk, item.pk]),
+                    HTTP_HOST="localhost",
+                )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(b"".join(response.streaming_content), b"audio-bytes")
+            self.assertIn('attachment; filename="file.flac"', response.headers["Content-Disposition"])
+
+    def test_item_download_falls_back_to_source_filename_when_path_missing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage_root = Path(temp_dir) / "music"
+            storage_root.mkdir()
+            file_path = storage_root / "nested" / "file.flac"
+            file_path.parent.mkdir()
+            file_path.write_bytes(b"audio-bytes")
+
+            with override_settings(MUSIC_STORAGE_ROOT=storage_root, SLSKD_DOWNLOADS_DIR=storage_root):
+                track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
+                item = TrackImportItem.objects.create(
+                    track_import=track_import,
+                    row_number=1,
+                    artists="Elysion",
+                    name="Fairytale",
+                    search_query="Elysion Fairytale",
+                    status=TrackImportItem.STATUS_DONE,
+                )
+                item.sources.create(rank=1, username="user", remote_filename="file.flac")
+
+                response = self.client.get(
+                    reverse("downloads-item-download", args=[track_import.pk, item.pk]),
+                    HTTP_HOST="localhost",
+                )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(b"".join(response.streaming_content), b"audio-bytes")
+
+    def test_item_download_serves_absolute_transfer_path(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage_root = Path(temp_dir) / "music"
+            storage_root.mkdir()
+            transfer_path = Path(temp_dir) / "downloads" / "file.flac"
+            transfer_path.parent.mkdir()
+            transfer_path.write_bytes(b"audio-bytes")
+
+            with override_settings(MUSIC_STORAGE_ROOT=storage_root, SLSKD_DOWNLOADS_DIR=storage_root):
+                track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
+                item = TrackImportItem.objects.create(
+                    track_import=track_import,
+                    row_number=1,
+                    artists="Elysion",
+                    name="Fairytale",
+                    search_query="Elysion Fairytale",
+                    download_path=str(transfer_path),
+                )
+
+                response = self.client.get(
+                    reverse("downloads-item-download", args=[track_import.pk, item.pk]),
+                    HTTP_HOST="localhost",
+                )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(b"".join(response.streaming_content), b"audio-bytes")
 
     def test_item_query_update_manual(self):
         track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
