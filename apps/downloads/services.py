@@ -1,13 +1,21 @@
 import csv
 import io
+import json
 import re
+import time
 import unicodedata
 from dataclasses import dataclass
+from difflib import SequenceMatcher
+from urllib.error import URLError
+from urllib.parse import quote
+from urllib.request import Request, urlopen
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.utils import timezone
 
-from .models import TrackImport, TrackImportItem
+from .models import TrackImport, TrackImportItem, TrackImportItemSource
 
 REQUIRED_HEADERS = {"name", "artists"}
 HEADER_ALIASES = {
@@ -19,6 +27,9 @@ HEADER_ALIASES = {
     "isrc": "isrc",
 }
 ISRC_PATTERN = re.compile(r"^[A-Z]{2}[A-Z0-9]{3}\d{7}$")
+MAX_SOURCES_PER_ITEM = 10
+SEARCH_STATUS_INTERVAL_SECONDS = 5
+SEARCH_TIMEOUT_SECONDS = 90
 
 
 @dataclass
@@ -60,9 +71,311 @@ def build_slskd_search_query(*, name: str, artists: str, album: str = "", year: 
     query_parts = [_quote_term(value) for value in terms]
     if year is not None:
         query_parts.append(str(year))
-    if isrc:
-        query_parts.append(isrc)
     return " ".join(query_parts)
+
+
+def _slskd_request(method: str, path: str, payload=None):
+    data = json.dumps(payload).encode("utf-8") if payload is not None else None
+    urls = [f"{settings.SLSKD_BASE_URL}{path}"]
+    if settings.SLSKD_BASE_URL == "http://slskd:5030":
+        urls.append(f"http://localhost:5030{path}")
+
+    last_error = None
+    for url in urls:
+        request = Request(
+            url,
+            data=data,
+            method=method,
+            headers={
+                "X-API-Key": settings.SLSKD_API_KEY,
+                "Content-Type": "application/json",
+            },
+        )
+        try:
+            with urlopen(request, timeout=30) as response:
+                body = response.read()
+                return json.loads(body.decode("utf-8")) if body else None
+        except URLError as exc:
+            last_error = exc
+
+    raise last_error
+
+
+def _clean_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9]+", " ", normalized.lower()).strip()
+
+
+def score_slskd_source(response: dict, file_data: dict, item: TrackImportItem) -> float:
+    extension = str(file_data.get("extension") or "").lower()
+    filename = str(file_data.get("filename") or "")
+    title_similarity = SequenceMatcher(None, _clean_text(item.name), _clean_text(filename)).ratio()
+    score = title_similarity * 5000
+
+    if extension == "flac":
+        score += 10000
+    elif extension == "wav":
+        score += 9000
+    elif extension == "mp3":
+        score += 5000
+
+    score += (file_data.get("bitDepth") or 0) * 10
+    score += (file_data.get("sampleRate") or 0) / 100
+    score += (response.get("uploadSpeed") or 0) / 1_000_000
+    score -= response.get("queueLength") or 0
+
+    if response.get("hasFreeUploadSlot"):
+        score += 100
+    if file_data.get("isLocked"):
+        score -= 10000
+    if title_similarity < 0.35:
+        score -= 2500
+
+    filename_clean = _clean_text(filename)
+    for penalty in ("live", "instrumental", "karaoke", "tribute", "cover", "remix", "demo", "radio edit"):
+        if penalty in filename_clean:
+            score -= 500
+
+    return round(score, 2)
+
+
+def get_item_search_query(item: TrackImportItem) -> str:
+    if item.search_query_mode == TrackImportItem.SEARCH_QUERY_MANUAL and item.search_query.strip():
+        return item.search_query
+    return build_slskd_search_query(
+        name=item.name,
+        artists=item.artists,
+        album=item.album,
+        year=item.year,
+    )
+
+
+def refresh_auto_item_search_query(item: TrackImportItem) -> str:
+    search_query = build_slskd_search_query(
+        name=item.name,
+        artists=item.artists,
+        album=item.album,
+        year=item.year,
+    )
+    if item.search_query != search_query or item.search_query_mode != TrackImportItem.SEARCH_QUERY_AUTO:
+        item.search_query = search_query
+        item.search_query_mode = TrackImportItem.SEARCH_QUERY_AUTO
+        item.save(update_fields=["search_query", "search_query_mode", "updated_at"])
+    return search_query
+
+
+def sync_item_search_query(item: TrackImportItem) -> str:
+    if item.search_query_mode == TrackImportItem.SEARCH_QUERY_MANUAL and item.search_query.strip():
+        return item.search_query
+    return refresh_auto_item_search_query(item)
+
+
+def search_slskd_sources(item: TrackImportItem, max_sources: int = MAX_SOURCES_PER_ITEM, keep_search: bool = True) -> list[TrackImportItemSource]:
+    search_query = sync_item_search_query(item)
+
+    search = _slskd_request("POST", "/api/v0/searches", {"searchText": search_query})
+    search_id = search["id"]
+    started_at = time.monotonic()
+    item.search_slskd_id = str(search_id)
+    item.search_state = "Started"
+    item.search_response_count = 0
+    item.search_started_at = timezone.now()
+    item.search_finished_at = None
+    item.last_error = ""
+    item.save(
+        update_fields=[
+            "search_slskd_id",
+            "search_state",
+            "search_response_count",
+            "search_started_at",
+            "search_finished_at",
+            "last_error",
+            "updated_at",
+        ]
+    )
+
+    try:
+        while True:
+            status = _slskd_request("GET", f"/api/v0/searches/{search_id}") or {}
+            item.search_state = str(status.get("state") or "")
+            item.search_response_count = int(status.get("responseCount") or 0)
+            item.save(update_fields=["search_state", "search_response_count", "updated_at"])
+            if status.get("isComplete") or time.monotonic() - started_at >= SEARCH_TIMEOUT_SECONDS:
+                break
+            time.sleep(SEARCH_STATUS_INTERVAL_SECONDS)
+
+        responses = _slskd_request("GET", f"/api/v0/searches/{search_id}/responses") or []
+        item.search_finished_at = timezone.now()
+        item.save(update_fields=["search_finished_at", "updated_at"])
+    finally:
+        if not keep_search:
+            _slskd_request("DELETE", f"/api/v0/searches/{search_id}")
+
+    ranked: list[tuple[float, dict, dict]] = []
+    for response in responses:
+        for file_data in response.get("files", []):
+            ranked.append((score_slskd_source(response, file_data, item), response, file_data))
+    ranked.sort(key=lambda source: source[0], reverse=True)
+
+    sources: list[TrackImportItemSource] = []
+    for rank, (score, response, file_data) in enumerate(ranked[:max_sources], start=1):
+        source, _ = TrackImportItemSource.objects.update_or_create(
+            item=item,
+            username=str(response.get("username") or ""),
+            remote_filename=str(file_data.get("filename") or ""),
+            size_bytes=file_data.get("size"),
+            defaults={
+                "rank": rank,
+                "extension": str(file_data.get("extension") or "").lower(),
+                "sample_rate": file_data.get("sampleRate"),
+                "bit_depth": file_data.get("bitDepth"),
+                "duration_seconds": file_data.get("length"),
+                "score": score,
+                "queue_length": response.get("queueLength") or 0,
+                "upload_speed": response.get("uploadSpeed") or 0,
+            },
+        )
+        sources.append(source)
+
+    return sources
+
+
+def enqueue_source(source: TrackImportItemSource) -> None:
+    payload = [{"filename": source.remote_filename}]
+    if source.size_bytes is not None:
+        payload[0]["size"] = source.size_bytes
+    _slskd_request("POST", f"/api/v0/transfers/downloads/{quote(source.username, safe='')}", payload)
+    source.mark_requested()
+    source.item.status = TrackImportItem.STATUS_DOWNLOADING
+    source.item.download_progress = 0
+    source.item.download_path = source.remote_filename
+    source.item.save(update_fields=["status", "download_progress", "download_path", "updated_at"])
+
+
+def search_and_enqueue_item(item: TrackImportItem) -> TrackImportItemSource:
+    sources = search_slskd_sources(item)
+    source = sources[0] if sources else None
+    if source is None:
+        raise ValueError("Nenhuma fonte encontrada no slskd.")
+    enqueue_source(source)
+    return source
+
+
+def enqueue_best_available_source(item: TrackImportItem) -> TrackImportItemSource:
+    source = item.sources.filter(download_requested_at__isnull=True).order_by("rank", "-score").first()
+    if source is None:
+        source = search_and_enqueue_item(item)
+        return source
+    enqueue_source(source)
+    return source
+
+
+def _download_index() -> dict[tuple[str, str], dict]:
+    index = {}
+    for user_data in _slskd_request("GET", "/api/v0/transfers/downloads") or []:
+        username = str(user_data.get("username") or "").strip().casefold()
+        for directory in user_data.get("directories") or []:
+            for file_data in directory.get("files") or []:
+                filename = str(file_data.get("filename") or "")
+                if username and filename:
+                    index[(username, filename.casefold())] = file_data
+    return index
+
+
+def _slskd_item_status(state: str) -> str:
+    normalized = re.sub(r"[^a-z]+", "", str(state or "").lower())
+    if normalized == "completedsucceeded":
+        return TrackImportItem.STATUS_DONE
+    if "reject" in normalized or "cancel" in normalized:
+        return TrackImportItem.STATUS_ERROR
+    if normalized.startswith("completed"):
+        return TrackImportItem.STATUS_ERROR
+    if normalized in {"inprogress", "initializing"} or normalized.startswith("queued") or normalized in {"requested", "none"}:
+        return TrackImportItem.STATUS_DOWNLOADING
+    return TrackImportItem.STATUS_DOWNLOADING
+
+
+def update_download_statuses(track_import: TrackImport, enqueue_next: bool = True) -> dict[str, int]:
+    downloads = _download_index()
+    summary = {"updated": 0, "done": 0, "failed": 0, "queued_next": 0}
+    requested_sources = TrackImportItemSource.objects.filter(
+        item__track_import=track_import,
+        download_requested_at__isnull=False,
+    ).select_related("item")
+
+    for source in requested_sources:
+        transfer = downloads.get((source.username.casefold(), source.remote_filename.casefold()))
+        if not transfer:
+            continue
+
+        state = transfer.get("stateDescription") or transfer.get("state") or ""
+        status = _slskd_item_status(state)
+        progress = int(float(transfer.get("percentComplete") or 0))
+        source.download_state = str(state)
+        source.save(update_fields=["download_state", "updated_at"])
+        source.item.status = status
+        source.item.download_progress = 100 if status == TrackImportItem.STATUS_DONE else progress
+        source.item.save(update_fields=["status", "download_progress", "updated_at"])
+        summary["updated"] += 1
+
+        if status == TrackImportItem.STATUS_DONE:
+            summary["done"] += 1
+        elif status == TrackImportItem.STATUS_ERROR:
+            summary["failed"] += 1
+            next_source = source.item.sources.filter(download_requested_at__isnull=True).order_by("rank", "-score").first()
+            if enqueue_next:
+                if next_source is None:
+                    next_sources = search_slskd_sources(source.item)
+                    next_source = next((candidate for candidate in next_sources if candidate.download_requested_at is None), None)
+                if next_source is not None:
+                    enqueue_source(next_source)
+                    summary["queued_next"] += 1
+
+    return summary
+
+
+def process_download_round(track_import: TrackImport, limit: int = 0) -> dict[str, int]:
+    items = track_import.items.filter(
+        status__in=[
+            TrackImportItem.STATUS_PENDING,
+            TrackImportItem.STATUS_SEARCHING,
+            TrackImportItem.STATUS_ERROR,
+        ]
+    ).order_by("row_number", "id")
+    if limit > 0:
+        items = items[:limit]
+
+    summary = {"searched": 0, "queued": 0, "without_source": 0}
+    for item in items:
+        item.status = TrackImportItem.STATUS_SEARCHING
+        item.save(update_fields=["status", "updated_at"])
+        try:
+            sources = search_slskd_sources(item)
+        except Exception:
+            item.status = TrackImportItem.STATUS_ERROR
+            item.last_error = "Falha ao buscar no slskd."
+            item.save(update_fields=["status", "last_error", "updated_at"])
+            raise
+        summary["searched"] += 1
+
+        source = sources[0] if sources else None
+        if not source:
+            item.status = TrackImportItem.STATUS_ERROR
+            item.last_error = "Nenhuma fonte encontrada no slskd."
+            item.save(update_fields=["status", "last_error", "updated_at"])
+            summary["without_source"] += 1
+            continue
+
+        try:
+            enqueue_source(source)
+        except Exception:
+            item.status = TrackImportItem.STATUS_ERROR
+            item.last_error = "Falha ao enfileirar download no slskd."
+            item.save(update_fields=["status", "last_error", "updated_at"])
+            raise
+        summary["queued"] += 1
+
+    return summary
 
 
 def parse_track_import_csv(uploaded_file) -> ParsedImportFile:
@@ -153,6 +466,7 @@ def create_track_import(uploaded_file) -> TrackImport:
                 year=row.year,
                 isrc=row.isrc,
                 search_query=row.search_query,
+                search_query_mode=TrackImportItem.SEARCH_QUERY_AUTO,
             )
             for row in parsed_file.rows
         ]

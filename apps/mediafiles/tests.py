@@ -1,6 +1,7 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
@@ -8,6 +9,10 @@ from .models import MediaFile, MonitoredDirectory
 
 
 class LibraryDashboardTests(TestCase):
+    def setUp(self):
+        user = get_user_model().objects.create_user(username="tester", password="secret123")
+        self.client.force_login(user)
+
     def test_dashboard_loads(self):
         response = self.client.get(reverse("library-dashboard"), HTTP_HOST="localhost")
 
@@ -34,4 +39,4 @@ class LibraryDashboardTests(TestCase):
             response = self.client.post(reverse("scan-directories"), HTTP_HOST="localhost")
 
         self.assertRedirects(response, reverse("library-dashboard"))
-        self.assertTrue(MediaFile.objects.filter(path=str(audio_path)).exists())
+        self.assertTrue(MediaFile.objects.filter(source_path=str(audio_path)).exists())

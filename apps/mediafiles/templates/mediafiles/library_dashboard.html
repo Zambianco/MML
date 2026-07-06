@@ -3,15 +3,16 @@
 {% block title %}Biblioteca | My Music Library{% endblock %}
 
 {% block content %}
-<main class="container py-4">
+<main class="container app-page py-4">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
         <div>
-            <p class="text-uppercase text-secondary small mb-1">My Music Library</p>
-            <h1 class="h3 mb-0">Biblioteca</h1>
+            <p class="page-kicker mb-1">My Music Library</p>
+            <h1 class="h3 mb-1">Biblioteca musical</h1>
+            <p class="text-secondary mb-0">Artistas, albuns, faixas e importacoes recentes do acervo.</p>
         </div>
         <form method="post" action="{% url 'scan-directories' %}">
             {% csrf_token %}
-            <button class="btn btn-dark" type="submit">Executar scan</button>
+            <button class="btn btn-dark" type="submit">Atualizar acervo</button>
         </form>
     </div>
 
@@ -24,61 +25,151 @@
     {% endif %}
 
     <div class="row g-4 mb-4">
-        <div class="col-md-4">
+        <div class="col-sm-6 col-xl-3">
             <div class="card shadow-sm border-0 h-100">
                 <div class="card-body">
-                    <div class="text-secondary small">Diretorios</div>
-                    <div class="display-6">{{ directory_count }}</div>
+                    <div class="text-secondary small">Artistas</div>
+                    <div class="display-6">{{ artist_count }}</div>
                 </div>
             </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-sm-6 col-xl-3">
             <div class="card shadow-sm border-0 h-100">
                 <div class="card-body">
-                    <div class="text-secondary small">Arquivos indexados</div>
-                    <div class="display-6">{{ media_file_count }}</div>
+                    <div class="text-secondary small">Albuns</div>
+                    <div class="display-6">{{ album_count }}</div>
                 </div>
             </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-sm-6 col-xl-3">
             <div class="card shadow-sm border-0 h-100">
                 <div class="card-body">
-                    <div class="text-secondary small">API</div>
-                    <a class="btn btn-outline-dark btn-sm mt-2" href="{% url 'api-index' %}">Abrir API</a>
+                    <div class="text-secondary small">Faixas</div>
+                    <div class="display-6">{{ track_count }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <div class="text-secondary small">Arquivos em revisao</div>
+                    <div class="display-6">{{ review_count }}</div>
                 </div>
             </div>
         </div>
     </div>
 
     <div class="row g-4">
-        <section class="col-lg-5">
+        <section class="col-lg-8">
             <div class="card shadow-sm border-0">
                 <div class="card-body">
-                    <h2 class="h5 mb-3">Adicionar diretorio</h2>
-                    <form method="post" action="{% url 'create-directory' %}">
-                        {% csrf_token %}
-                        <div class="mb-3">
-                            <label class="form-label" for="{{ form.name.id_for_label }}">Nome</label>
-                            {{ form.name }}
+                    <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
+                        <h2 class="h5 mb-0">Faixas recentes</h2>
+                        <a class="btn btn-outline-dark btn-sm" href="{% url 'api-index' %}">Abrir API</a>
+                    </div>
+                    {% if recent_tracks %}
+                        <div class="table-responsive">
+                            <table class="table align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Faixa</th>
+                                        <th>Artista</th>
+                                        <th>Album</th>
+                                        <th>Arquivos</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for track in recent_tracks %}
+                                        <tr>
+                                            <td>{{ track.title }}</td>
+                                            <td>{{ track.artist.name }}</td>
+                                            <td>{{ track.album.title|default:"Single" }}</td>
+                                            <td>{{ track.file_count }}</td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label" for="{{ form.path.id_for_label }}">Caminho</label>
-                            {{ form.path }}
+                    {% else %}
+                        <p class="text-secondary mb-0">Nenhuma faixa cadastrada ainda.</p>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Artistas em destaque</h2>
+                    {% if featured_artists %}
+                        <div class="row row-cols-1 row-cols-md-2 g-3">
+                            {% for artist in featured_artists %}
+                                <div class="col">
+                                    <div class="border rounded p-3 h-100">
+                                        <strong class="d-block">{{ artist.name }}</strong>
+                                        <span class="text-secondary small">{{ artist.album_count }} album(ns) • {{ artist.track_count }} faixa(s)</span>
+                                    </div>
+                                </div>
+                            {% endfor %}
                         </div>
-                        <div class="form-check mb-3">
-                            {{ form.is_active }}
-                            <label class="form-check-label" for="{{ form.is_active.id_for_label }}">Ativo</label>
-                        </div>
-                        <button class="btn btn-dark w-100" type="submit">Salvar diretorio</button>
-                    </form>
+                    {% else %}
+                        <p class="text-secondary mb-0">Nenhum artista encontrado ainda.</p>
+                    {% endif %}
                 </div>
             </div>
         </section>
 
-        <section class="col-lg-7">
-            <div class="card shadow-sm border-0 mb-4">
+        <section class="col-lg-4">
+            <div class="card shadow-sm border-0">
                 <div class="card-body">
-                    <h2 class="h5 mb-3">Diretorios monitorados</h2>
+                    <h2 class="h5 mb-3">Importacao</h2>
+                    <form method="post" action="{% url 'create-directory' %}">
+                        {% csrf_token %}
+                        <div class="mb-3">
+                            <label class="form-label" for="{{ form.name.id_for_label }}">Fonte</label>
+                            {{ form.name }}
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="{{ form.path.id_for_label }}">Caminho de leitura</label>
+                            {{ form.path }}
+                        </div>
+                        <div class="form-check mb-3">
+                            {{ form.is_active }}
+                            <label class="form-check-label" for="{{ form.is_active.id_for_label }}">Ativa</label>
+                        </div>
+                        <button class="btn btn-dark w-100" type="submit">Salvar fonte</button>
+                    </form>
+                    <div class="small text-secondary mt-3">
+                        {{ directory_count }} fonte(s) configurada(s) • {{ media_file_count }} arquivo(s) importado(s)
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm border-0 mt-4">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Importacoes recentes</h2>
+                    {% if recent_imports %}
+                        <div class="list-group list-group-flush">
+                            {% for media_file in recent_imports %}
+                                <div class="list-group-item px-0">
+                                    <div class="d-flex justify-content-between gap-3">
+                                        <strong>{{ media_file.track.title|default:"Arquivo sem faixa vinculada" }}</strong>
+                                        <span class="badge text-bg-light">{{ media_file.get_import_status_display }}</span>
+                                    </div>
+                                    <div class="text-secondary small">
+                                        {{ media_file.track.artist.name|default:"Sem artista" }}
+                                        {% if media_file.track.album %}• {{ media_file.track.album.title }}{% endif %}
+                                    </div>
+                                    <div class="text-secondary small text-break">{{ media_file.source_path|default:media_file.path }}</div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-secondary mb-0">Nenhuma importacao registrada ainda.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card shadow-sm border-0 mt-4">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Fontes monitoradas</h2>
                     {% if directories %}
                         <div class="list-group list-group-flush">
                             {% for directory in directories %}
@@ -86,50 +177,17 @@
                                     <div class="d-flex justify-content-between gap-3">
                                         <strong>{{ directory.name }}</strong>
                                         <span class="badge text-bg-{% if directory.is_active %}success{% else %}secondary{% endif %}">
-                                            {% if directory.is_active %}ativo{% else %}inativo{% endif %}
+                                            {% if directory.is_active %}ativa{% else %}inativa{% endif %}
                                         </span>
                                     </div>
-                                    <div class="text-secondary small text-break">{{ directory.path }}</div>
                                     <div class="text-secondary small">
-                                        Ultimo scan: {{ directory.last_scan_at|default:"nunca" }}
+                                        Ultima atualizacao: {{ directory.last_scan_at|default:"nunca" }}
                                     </div>
                                 </div>
                             {% endfor %}
                         </div>
                     {% else %}
-                        <p class="text-secondary mb-0">Nenhum diretorio cadastrado.</p>
-                    {% endif %}
-                </div>
-            </div>
-
-            <div class="card shadow-sm border-0">
-                <div class="card-body">
-                    <h2 class="h5 mb-3">Arquivos encontrados</h2>
-                    {% if media_files %}
-                        <div class="table-responsive">
-                            <table class="table table-sm align-middle">
-                                <thead>
-                                    <tr>
-                                        <th>Status</th>
-                                        <th>Caminho</th>
-                                        <th>Origem</th>
-                                        <th>Tamanho</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for media_file in media_files %}
-                                        <tr>
-                                            <td>{{ media_file.get_import_status_display }}</td>
-                                            <td class="text-break">{{ media_file.path }}</td>
-                                            <td class="text-break">{{ media_file.source_path|default:"-" }}</td>
-                                            <td>{{ media_file.size_bytes|default:"-" }}</td>
-                                        </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                    {% else %}
-                        <p class="text-secondary mb-0">Nenhum arquivo indexado ainda.</p>
+                        <p class="text-secondary mb-0">Nenhuma fonte configurada.</p>
                     {% endif %}
                 </div>
             </div>

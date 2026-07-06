@@ -1,81 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}Revisar Importacao | My Music Library{% endblock %}
+{% block title %}Acompanhar Downloads | My Music Library{% endblock %}
 
 {% block content %}
-<main class="container py-4">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
-        <div>
-            <p class="text-uppercase text-secondary small mb-1">Downloads</p>
-            <h1 class="h3 mb-0">Revisar importacao</h1>
-        </div>
-        <div class="d-flex gap-2">
-            <a class="btn btn-outline-dark" href="{% url 'downloads-import-list' %}">Nova importacao</a>
-            <a class="btn btn-outline-secondary" href="{% url 'library-dashboard' %}">Biblioteca</a>
-        </div>
-    </div>
-
-    <div class="row g-4 mb-4">
-        <div class="col-md-4">
-            <div class="card shadow-sm border-0 h-100">
-                <div class="card-body">
-                    <div class="text-secondary small">Arquivo</div>
-                    <div class="fw-semibold text-break">{{ track_import.source_name }}</div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card shadow-sm border-0 h-100">
-                <div class="card-body">
-                    <div class="text-secondary small">Faixas</div>
-                    <div class="display-6">{{ track_import.item_count }}</div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card shadow-sm border-0 h-100">
-                <div class="card-body">
-                    <div class="text-secondary small">Separador</div>
-                    <div class="display-6">{{ track_import.delimiter }}</div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="card shadow-sm border-0">
-        <div class="card-body">
-            <h2 class="h5 mb-3">Itens importados</h2>
-            <div class="table-responsive">
-                <table class="table table-sm align-middle mb-0">
-                    <thead>
-                        <tr>
-                            <th>Linha</th>
-                            <th>Nome</th>
-                            <th>Artistas</th>
-                            <th>Album</th>
-                            <th>Ano</th>
-                            <th>ISRC</th>
-                            <th>Query slskd</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for item in items %}
-                            <tr>
-                                <td>{{ item.row_number }}</td>
-                                <td>{{ item.name }}</td>
-                                <td>{{ item.artists }}</td>
-                                <td>{{ item.album|default:"-" }}</td>
-                                <td>{{ item.year|default:"-" }}</td>
-                                <td>{{ item.isrc|default:"-" }}</td>
-                                <td class="text-break">{{ item.search_query }}</td>
-                                <td>{{ item.get_status_display }}</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
+<main class="container app-page py-4">
+    <div id="downloads-refresh-panel" hx-get="{% url 'downloads-import-detail-fragment' track_import.pk %}" hx-trigger="load, every 10s" hx-swap="outerHTML">
+        {% include "downloads/import_detail_panel.html" %}
     </div>
 </main>
 {% endblock %}

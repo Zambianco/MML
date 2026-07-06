@@ -2,12 +2,15 @@
 
 {% block title %}Entrar | My Music Library{% endblock %}
 
+{% block body_class %}auth-shell{% endblock %}
+
 {% block content %}
-<main class="container py-5">
+<main class="container auth-page py-5">
     <div class="row justify-content-center">
         <div class="col-md-5 col-lg-4">
             <div class="card shadow-sm border-0">
                 <div class="card-body p-4">
+                    <p class="page-kicker mb-2">My Music Library</p>
                     <h1 class="h4 mb-4">Entrar</h1>
 
                     {% if form.errors %}

@@ -1,0 +1,3 @@
+<div id="downloads-refresh-panel" hx-get="{% url 'downloads-import-detail-fragment' track_import.pk %}" hx-trigger="load, every 10s" hx-swap="outerHTML">
+    {% include "downloads/import_detail_panel.html" %}
+</div>

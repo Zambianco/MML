@@ -15,3 +15,5 @@ staticfiles/
 postgres_data/
 redis_data/
 slskd_data/
+
+music/library/*
