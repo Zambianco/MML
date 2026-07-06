@@ -1,5 +1,7 @@
 from django.conf import settings
+from django.http import HttpResponseRedirect, JsonResponse
 from django.urls import get_script_prefix, set_script_prefix
+from django.utils.http import url_has_allowed_host_and_scheme
 
 
 class ScriptNamePrefixMiddleware:
@@ -32,3 +34,37 @@ class ScriptNamePrefixMiddleware:
             return self.get_response(request)
         finally:
             set_script_prefix(previous_prefix)
+
+
+class LoginRequiredMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+        self.login_url = "/login/"
+        self.public_paths = {
+            "/health/",
+            "/login/",
+            "/logout/",
+        }
+        self.public_prefixes = ("/admin/", "/static/")
+
+    def __call__(self, request):
+        path = request.path_info or "/"
+        if (
+            request.user.is_authenticated
+            or path in self.public_paths
+            or any(path.startswith(prefix) for prefix in self.public_prefixes)
+        ):
+            return self.get_response(request)
+
+        if path.startswith("/api/"):
+            return JsonResponse({"detail": "Authentication credentials were not provided."}, status=401)
+
+        next_url = request.get_full_path()
+        if not url_has_allowed_host_and_scheme(
+            url=next_url,
+            allowed_hosts={request.get_host()},
+            require_https=request.is_secure(),
+        ):
+            next_url = "/"
+
+        return HttpResponseRedirect(f"{self.login_url}?next={next_url}")

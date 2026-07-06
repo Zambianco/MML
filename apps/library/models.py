@@ -40,6 +40,9 @@ class Track(models.Model):
     disc_number = models.PositiveSmallIntegerField(default=1)
     track_number = models.PositiveSmallIntegerField(blank=True, null=True)
     duration_ms = models.PositiveIntegerField(blank=True, null=True)
+    isrc = models.CharField(max_length=12, blank=True, db_index=True)
+    acoustic_fingerprint = models.TextField(blank=True)
+    acoustic_fingerprint_hash = models.CharField(max_length=64, blank=True, db_index=True)
     musicbrainz_id = models.UUIDField(blank=True, null=True, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -50,6 +53,16 @@ class Track(models.Model):
             models.UniqueConstraint(
                 fields=["album", "disc_number", "track_number"],
                 name="unique_track_position_per_album",
+            ),
+            models.UniqueConstraint(
+                fields=["isrc"],
+                condition=~models.Q(isrc=""),
+                name="unique_track_isrc",
+            ),
+            models.UniqueConstraint(
+                fields=["acoustic_fingerprint_hash"],
+                condition=~models.Q(acoustic_fingerprint_hash=""),
+                name="unique_track_acoustic_fingerprint_hash",
             ),
         ]
 

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Entrar | My Music Library{% endblock %}
+
+{% block content %}
+<main class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-5 col-lg-4">
+            <div class="card shadow-sm border-0">
+                <div class="card-body p-4">
+                    <h1 class="h4 mb-4">Entrar</h1>
+
+                    {% if form.errors %}
+                        <div class="alert alert-danger" role="alert">
+                            Usuario ou senha invalidos.
+                        </div>
+                    {% endif %}
+
+                    <form method="post">
+                        {% csrf_token %}
+                        <div class="mb-3">
+                            <label class="form-label" for="{{ form.username.id_for_label }}">Usuario</label>
+                            <input
+                                class="form-control"
+                                id="{{ form.username.id_for_label }}"
+                                name="{{ form.username.html_name }}"
+                                type="text"
+                                value="{{ form.username.value|default:'' }}"
+                                required
+                                autofocus
+                            >
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="{{ form.password.id_for_label }}">Senha</label>
+                            <input
+                                class="form-control"
+                                id="{{ form.password.id_for_label }}"
+                                name="{{ form.password.html_name }}"
+                                type="password"
+                                required
+                            >
+                        </div>
+                        {% if next %}
+                            <input type="hidden" name="next" value="{{ next }}">
+                        {% endif %}
+                        <button class="btn btn-dark w-100" type="submit">Entrar</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}

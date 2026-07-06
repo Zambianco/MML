@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}Importar CSV | My Music Library{% endblock %}
+
+{% block content %}
+<main class="container py-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+        <div>
+            <p class="text-uppercase text-secondary small mb-1">Downloads</p>
+            <h1 class="h3 mb-0">Importar CSV</h1>
+        </div>
+        <a class="btn btn-outline-dark" href="{% url 'library-dashboard' %}">Biblioteca</a>
+    </div>
+
+    {% if messages %}
+        <div class="mb-4">
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags|default:'info' }} mb-2">{{ message }}</div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <div class="row g-4">
+        <section class="col-lg-5">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Nova importacao</h2>
+                    <p class="text-secondary small">Cabecalho aceito: Nome;Artista(s);Album;Ano;ISRC</p>
+                    <form method="post" enctype="multipart/form-data">
+                        {% csrf_token %}
+                        <div class="mb-3">
+                            <label class="form-label" for="{{ form.file.id_for_label }}">Arquivo CSV</label>
+                            {{ form.file }}
+                            {% if form.file.errors %}
+                                <div class="text-danger small mt-2">{{ form.file.errors|join:", " }}</div>
+                            {% endif %}
+                        </div>
+                        <button class="btn btn-dark w-100" type="submit">Importar</button>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <section class="col-lg-7">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Importacoes recentes</h2>
+                    {% if imports %}
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Arquivo</th>
+                                        <th>Faixas</th>
+                                        <th>Data</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for track_import in imports %}
+                                        <tr>
+                                            <td>
+                                                <a class="link-dark" href="{% url 'downloads-import-detail' track_import.pk %}">
+                                                    {{ track_import.source_name }}
+                                                </a>
+                                            </td>
+                                            <td>{{ track_import.item_count }}</td>
+                                            <td>{{ track_import.created_at }}</td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-secondary mb-0">Nenhuma importacao realizada.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </section>
+    </div>
+</main>
+{% endblock %}

@@ -12,6 +12,6 @@ class MonitoredDirectoryAdmin(admin.ModelAdmin):
 
 @admin.register(MediaFile)
 class MediaFileAdmin(admin.ModelAdmin):
-    list_display = ("path", "directory", "track", "size_bytes", "mime_type", "checksum")
-    list_filter = ("mime_type",)
-    search_fields = ("path", "checksum", "track__title", "track__artist__name")
+    list_display = ("path", "import_status", "directory", "track", "size_bytes", "mime_type", "duplicate_confidence", "duplicate_reason")
+    list_filter = ("import_status", "mime_type", "needs_review", "duplicate_reason")
+    search_fields = ("path", "source_path", "storage_path", "sha256", "checksum", "track__title", "track__artist__name")

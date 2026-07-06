@@ -18,19 +18,40 @@ class MonitoredDirectory(models.Model):
 
 
 class MediaFile(models.Model):
+    class ImportStatus(models.TextChoices):
+        IMPORTED = "imported", "Imported"
+        DUPLICATE = "duplicate", "Duplicate"
+        REVIEW = "review", "Review"
+        ERROR = "error", "Error"
+
     directory = models.ForeignKey(MonitoredDirectory, on_delete=models.PROTECT, related_name="media_files")
     track = models.ForeignKey("library.Track", on_delete=models.SET_NULL, related_name="media_files", blank=True, null=True)
+    duplicate_of = models.ForeignKey("self", on_delete=models.SET_NULL, related_name="duplicates", blank=True, null=True)
     path = models.TextField(unique=True)
+    source_path = models.TextField(blank=True)
+    storage_path = models.TextField(blank=True)
     size_bytes = models.PositiveBigIntegerField(blank=True, null=True)
     mime_type = models.CharField(max_length=120, blank=True)
     checksum = models.CharField(max_length=128, blank=True, db_index=True)
+    sha256 = models.CharField(max_length=64, blank=True, db_index=True)
     duration_ms = models.PositiveIntegerField(blank=True, null=True)
     bitrate_kbps = models.PositiveIntegerField(blank=True, null=True)
+    duplicate_confidence = models.PositiveSmallIntegerField(default=0)
+    duplicate_reason = models.CharField(max_length=40, blank=True)
+    needs_review = models.BooleanField(default=False)
+    import_status = models.CharField(max_length=20, choices=ImportStatus.choices, default=ImportStatus.IMPORTED)
     discovered_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["path"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["storage_path"],
+                condition=~models.Q(storage_path=""),
+                name="unique_media_file_storage_path",
+            ),
+        ]
 
     def __str__(self) -> str:
         return self.path

@@ -18,6 +18,6 @@ class AlbumAdmin(admin.ModelAdmin):
 
 @admin.register(Track)
 class TrackAdmin(admin.ModelAdmin):
-    list_display = ("title", "artist", "album", "disc_number", "track_number", "duration_ms")
+    list_display = ("title", "artist", "album", "disc_number", "track_number", "duration_ms", "isrc")
     list_filter = ("disc_number",)
-    search_fields = ("title", "artist__name", "album__title", "musicbrainz_id")
+    search_fields = ("title", "artist__name", "album__title", "isrc", "acoustic_fingerprint_hash", "musicbrainz_id")

@@ -57,4 +57,4 @@ class MonitoredDirectoryViewSet(viewsets.ModelViewSet):
 class MediaFileViewSet(viewsets.ModelViewSet):
     queryset = MediaFile.objects.select_related("directory", "track", "track__artist")
     serializer_class = MediaFileSerializer
-    search_fields = ["path", "checksum", "track__title", "track__artist__name"]
+    search_fields = ["path", "source_path", "storage_path", "checksum", "sha256", "track__title", "track__artist__name"]

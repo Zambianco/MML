@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block title %}Biblioteca | My Music Library{% endblock %}
+
+{% block content %}
+<main class="container py-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+        <div>
+            <p class="text-uppercase text-secondary small mb-1">My Music Library</p>
+            <h1 class="h3 mb-0">Biblioteca</h1>
+        </div>
+        <form method="post" action="{% url 'scan-directories' %}">
+            {% csrf_token %}
+            <button class="btn btn-dark" type="submit">Executar scan</button>
+        </form>
+    </div>
+
+    {% if messages %}
+        <div class="mb-4">
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags|default:'info' }} mb-2">{{ message }}</div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <div class="row g-4 mb-4">
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <div class="text-secondary small">Diretorios</div>
+                    <div class="display-6">{{ directory_count }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <div class="text-secondary small">Arquivos indexados</div>
+                    <div class="display-6">{{ media_file_count }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <div class="text-secondary small">API</div>
+                    <a class="btn btn-outline-dark btn-sm mt-2" href="{% url 'api-index' %}">Abrir API</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <section class="col-lg-5">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Adicionar diretorio</h2>
+                    <form method="post" action="{% url 'create-directory' %}">
+                        {% csrf_token %}
+                        <div class="mb-3">
+                            <label class="form-label" for="{{ form.name.id_for_label }}">Nome</label>
+                            {{ form.name }}
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="{{ form.path.id_for_label }}">Caminho</label>
+                            {{ form.path }}
+                        </div>
+                        <div class="form-check mb-3">
+                            {{ form.is_active }}
+                            <label class="form-check-label" for="{{ form.is_active.id_for_label }}">Ativo</label>
+                        </div>
+                        <button class="btn btn-dark w-100" type="submit">Salvar diretorio</button>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <section class="col-lg-7">
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Diretorios monitorados</h2>
+                    {% if directories %}
+                        <div class="list-group list-group-flush">
+                            {% for directory in directories %}
+                                <div class="list-group-item px-0">
+                                    <div class="d-flex justify-content-between gap-3">
+                                        <strong>{{ directory.name }}</strong>
+                                        <span class="badge text-bg-{% if directory.is_active %}success{% else %}secondary{% endif %}">
+                                            {% if directory.is_active %}ativo{% else %}inativo{% endif %}
+                                        </span>
+                                    </div>
+                                    <div class="text-secondary small text-break">{{ directory.path }}</div>
+                                    <div class="text-secondary small">
+                                        Ultimo scan: {{ directory.last_scan_at|default:"nunca" }}
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-secondary mb-0">Nenhum diretorio cadastrado.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Arquivos encontrados</h2>
+                    {% if media_files %}
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>Status</th>
+                                        <th>Caminho</th>
+                                        <th>Origem</th>
+                                        <th>Tamanho</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for media_file in media_files %}
+                                        <tr>
+                                            <td>{{ media_file.get_import_status_display }}</td>
+                                            <td class="text-break">{{ media_file.path }}</td>
+                                            <td class="text-break">{{ media_file.source_path|default:"-" }}</td>
+                                            <td>{{ media_file.size_bytes|default:"-" }}</td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-secondary mb-0">Nenhum arquivo indexado ainda.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </section>
+    </div>
+</main>
+{% endblock %}

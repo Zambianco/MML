@@ -2,23 +2,456 @@
 
 {% block title %}My Music Library{% endblock %}
 
+{% block body_class %}landing-page{% endblock %}
+
+{% block extra_head %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+    :root {
+        --landing-bg: #0b0e10;
+        --landing-surface: rgba(16, 20, 24, 0.86);
+        --landing-surface-strong: #13181d;
+        --landing-surface-soft: rgba(255, 255, 255, 0.04);
+        --landing-ink: #f4efe6;
+        --landing-muted: #a6abb0;
+        --landing-line: rgba(255, 255, 255, 0.08);
+        --landing-accent: #d7a86e;
+        --landing-accent-soft: rgba(215, 168, 110, 0.16);
+        --landing-shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
+    }
+
+    body.landing-page {
+        font-family: "Space Grotesk", sans-serif;
+        color: var(--landing-ink);
+        background:
+            radial-gradient(circle at top left, rgba(215, 168, 110, 0.16), transparent 26%),
+            radial-gradient(circle at 85% 15%, rgba(59, 92, 95, 0.22), transparent 24%),
+            linear-gradient(180deg, #101417 0%, var(--landing-bg) 100%);
+    }
+
+    .landing-shell {
+        padding: 2.5rem 0 4rem;
+    }
+
+    .landing-stage {
+        position: relative;
+        overflow: hidden;
+        border: 1px solid var(--landing-line);
+        border-radius: 2rem;
+        background:
+            linear-gradient(135deg, rgba(255, 255, 255, 0.04), transparent 45%),
+            linear-gradient(180deg, rgba(19, 24, 29, 0.95), rgba(10, 13, 16, 0.98));
+        box-shadow: var(--landing-shadow);
+    }
+
+    .landing-stage::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+            linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+            linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        background-size: 32px 32px;
+        mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.75), transparent);
+        pointer-events: none;
+    }
+
+    .landing-stage > .row {
+        position: relative;
+        z-index: 1;
+    }
+
+    .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.55rem;
+        padding: 0.45rem 0.9rem;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--landing-accent);
+        font-size: 0.8rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+    }
+
+    .eyebrow::before {
+        content: "";
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 50%;
+        background: currentColor;
+        box-shadow: 0 0 16px currentColor;
+    }
+
+    .landing-title {
+        max-width: 10ch;
+        font-family: "Fraunces", serif;
+        font-size: clamp(3.1rem, 6vw, 5.6rem);
+        line-height: 0.92;
+        letter-spacing: -0.05em;
+    }
+
+    .landing-summary {
+        max-width: 35rem;
+        font-size: 1.05rem;
+        line-height: 1.7;
+        color: var(--landing-muted);
+    }
+
+    .landing-summary strong {
+        color: var(--landing-ink);
+        font-weight: 500;
+    }
+
+    .landing-actions .btn {
+        min-width: 11rem;
+        padding: 0.95rem 1.25rem;
+        border-radius: 999px;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+    }
+
+    .btn-landing-primary {
+        color: #111417;
+        background: var(--landing-accent);
+        border-color: var(--landing-accent);
+    }
+
+    .btn-landing-primary:hover,
+    .btn-landing-primary:focus {
+        color: #111417;
+        background: #e4b885;
+        border-color: #e4b885;
+    }
+
+    .btn-landing-secondary {
+        color: var(--landing-ink);
+        background: transparent;
+        border-color: rgba(255, 255, 255, 0.16);
+    }
+
+    .btn-landing-secondary:hover,
+    .btn-landing-secondary:focus {
+        color: var(--landing-ink);
+        background: rgba(255, 255, 255, 0.05);
+        border-color: rgba(255, 255, 255, 0.24);
+    }
+
+    .landing-proof {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 1rem;
+        margin-top: 2.5rem;
+    }
+
+    .proof-card,
+    .mood-card,
+    .deck-card {
+        height: 100%;
+        border: 1px solid var(--landing-line);
+        border-radius: 1.5rem;
+        background: var(--landing-surface);
+        backdrop-filter: blur(12px);
+    }
+
+    .proof-card {
+        padding: 1.2rem 1.25rem;
+    }
+
+    .proof-value {
+        display: block;
+        margin-bottom: 0.35rem;
+        font-size: 1rem;
+        font-weight: 700;
+        color: var(--landing-ink);
+    }
+
+    .proof-label,
+    .mood-copy,
+    .deck-copy,
+    .queue-copy {
+        color: var(--landing-muted);
+    }
+
+    .deck-card {
+        position: relative;
+        padding: 1.5rem;
+        background:
+            radial-gradient(circle at top right, rgba(215, 168, 110, 0.1), transparent 28%),
+            linear-gradient(180deg, rgba(21, 27, 32, 0.96), rgba(10, 13, 16, 0.98));
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+
+    .deck-topline {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 1.25rem;
+        font-size: 0.78rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--landing-muted);
+    }
+
+    .deck-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+
+    .deck-status::before {
+        content: "";
+        width: 0.45rem;
+        height: 0.45rem;
+        border-radius: 50%;
+        background: #8dd6a2;
+        box-shadow: 0 0 14px rgba(141, 214, 162, 0.9);
+    }
+
+    .deck-cover {
+        display: grid;
+        place-items: center;
+        aspect-ratio: 1;
+        margin-bottom: 1.25rem;
+        border-radius: 1.4rem;
+        background:
+            radial-gradient(circle at center, rgba(215, 168, 110, 0.28) 0, rgba(215, 168, 110, 0.02) 36%, transparent 37%),
+            radial-gradient(circle at center, rgba(255, 255, 255, 0.1) 0, rgba(255, 255, 255, 0.02) 58%, transparent 59%),
+            linear-gradient(135deg, #1f2931, #10161b);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .deck-vinyl {
+        width: 76%;
+        aspect-ratio: 1;
+        border-radius: 50%;
+        background:
+            radial-gradient(circle, #d7a86e 0 8%, #0f1418 8% 13%, #141a1e 13% 18%, #0b0f12 18% 100%);
+        box-shadow:
+            inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+            inset 0 0 0 18px rgba(255, 255, 255, 0.015);
+    }
+
+    .deck-card h2 {
+        font-family: "Fraunces", serif;
+        font-size: 1.9rem;
+        margin-bottom: 0.4rem;
+    }
+
+    .waveform {
+        display: flex;
+        align-items: end;
+        gap: 0.32rem;
+        height: 3.4rem;
+        margin: 1.4rem 0 1.1rem;
+    }
+
+    .waveform span {
+        flex: 1;
+        min-height: 0.8rem;
+        border-radius: 999px;
+        background: linear-gradient(180deg, rgba(215, 168, 110, 0.95), rgba(215, 168, 110, 0.24));
+    }
+
+    .waveform span:nth-child(2n) {
+        background: linear-gradient(180deg, rgba(133, 177, 188, 0.9), rgba(133, 177, 188, 0.2));
+    }
+
+    .queue {
+        display: grid;
+        gap: 0.7rem;
+        margin-top: 1.35rem;
+    }
+
+    .queue-item {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        gap: 0.85rem;
+        padding: 0.85rem 0.95rem;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 1rem;
+        background: var(--landing-surface-soft);
+    }
+
+    .queue-index {
+        color: var(--landing-accent);
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+    }
+
+    .queue-time {
+        font-size: 0.85rem;
+        color: var(--landing-muted);
+    }
+
+    .mood-grid {
+        margin-top: 1.5rem;
+    }
+
+    .mood-card {
+        padding: 1.5rem;
+        background:
+            linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent),
+            var(--landing-surface);
+    }
+
+    .mood-kicker {
+        margin-bottom: 0.6rem;
+        font-size: 0.78rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--landing-accent);
+    }
+
+    .mood-card h3 {
+        font-family: "Fraunces", serif;
+        font-size: 1.5rem;
+        margin-bottom: 0.55rem;
+    }
+
+    @media (max-width: 991.98px) {
+        .landing-title {
+            max-width: none;
+        }
+
+        .deck-card {
+            margin-top: 0.5rem;
+        }
+    }
+
+    @media (max-width: 767.98px) {
+        .landing-shell {
+            padding-top: 1.5rem;
+        }
+
+        .landing-stage {
+            border-radius: 1.5rem;
+        }
+
+        .landing-proof {
+            grid-template-columns: 1fr;
+        }
+
+        .landing-actions .btn {
+            width: 100%;
+        }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<main class="container py-5">
-    <div class="row justify-content-center">
-        <div class="col-lg-8">
-            <div class="card shadow-sm border-0">
-                <div class="card-body p-5">
-                    <span class="badge text-bg-dark mb-3">Nova versão</span>
-                    <h1 class="display-6 mb-3">{{ project_name }}</h1>
-                    <p class="lead mb-4">{{ project_summary }}</p>
-                    <div class="d-flex gap-3 flex-wrap">
-                        <a class="btn btn-dark" href="{% url 'admin:index' %}">Admin</a>
-                        <a class="btn btn-outline-dark" href="{% url 'api-index' %}">API</a>
-                        <a class="btn btn-outline-secondary" href="{% url 'healthcheck' %}">Healthcheck</a>
+<main class="container landing-shell">
+    <section class="landing-stage p-4 p-lg-5">
+        <div class="row g-4 align-items-center">
+            <div class="col-lg-7">
+                <span class="eyebrow mb-3">Arquivo sonoro</span>
+                <h1 class="landing-title mb-3">{{ project_name }}</h1>
+                <p class="landing-summary mb-4">
+                    {{ project_summary }}
+                    <strong>Um acervo vivo para reunir diretorios, imports e faixas em um fluxo com cara de colecao, nao de painel generico.</strong>
+                </p>
+                <div class="landing-actions d-flex flex-wrap gap-3">
+                    <a class="btn btn-landing-primary" href="{% url 'library-dashboard' %}">Entrar na colecao</a>
+                    <a class="btn btn-landing-secondary" href="{% url 'downloads-import-list' %}">Importar faixas</a>
+                </div>
+                <div class="landing-proof">
+                    <div class="proof-card">
+                        <span class="proof-value">Estante local</span>
+                        <span class="proof-label">Diretorios monitorados, scans recorrentes e arquivo centralizado.</span>
+                    </div>
+                    <div class="proof-card">
+                        <span class="proof-value">Lote de catalogacao</span>
+                        <span class="proof-label">CSV para subir repertorio sem trabalho manual repetitivo.</span>
+                    </div>
+                    <div class="proof-card">
+                        <span class="proof-value">Sala tecnica</span>
+                        <span class="proof-label">API e Admin acessiveis sem roubar o protagonismo da biblioteca.</span>
                     </div>
                 </div>
             </div>
+            <div class="col-lg-5">
+                <aside class="deck-card">
+                    <div class="deck-topline">
+                        <span>Listening Room</span>
+                        <span class="deck-status">Collection live</span>
+                    </div>
+                    <div class="deck-cover">
+                        <div class="deck-vinyl" aria-hidden="true"></div>
+                    </div>
+                    <p class="deck-copy mb-1">Sessao atual</p>
+                    <h2>Acervo em rotacao</h2>
+                    <p class="deck-copy mb-0">Escaneie o disco, importe o CSV e mantenha a fila de descoberta sempre pronta.</p>
+                    <div class="waveform" aria-hidden="true">
+                        <span style="height: 38%"></span>
+                        <span style="height: 78%"></span>
+                        <span style="height: 54%"></span>
+                        <span style="height: 92%"></span>
+                        <span style="height: 45%"></span>
+                        <span style="height: 66%"></span>
+                        <span style="height: 28%"></span>
+                        <span style="height: 84%"></span>
+                        <span style="height: 48%"></span>
+                        <span style="height: 72%"></span>
+                    </div>
+                    <div class="queue">
+                        <div class="queue-item">
+                            <span class="queue-index">A1</span>
+                            <div>
+                                <strong>Biblioteca</strong>
+                                <div class="queue-copy small">Abrir o acervo, revisar diretorios e rodar scan.</div>
+                            </div>
+                            <span class="queue-time">Play</span>
+                        </div>
+                        <div class="queue-item">
+                            <span class="queue-index">B2</span>
+                            <div>
+                                <strong>Downloads</strong>
+                                <div class="queue-copy small">Subir catalogos e acompanhar o historico das importacoes.</div>
+                            </div>
+                            <span class="queue-time">Queue</span>
+                        </div>
+                        <div class="queue-item">
+                            <span class="queue-index">C3</span>
+                            <div>
+                                <strong>API / Admin</strong>
+                                <div class="queue-copy small">Operacao de bastidor para integracoes, auditoria e manutencao.</div>
+                            </div>
+                            <span class="queue-time">Tools</span>
+                        </div>
+                    </div>
+                </aside>
+            </div>
         </div>
-    </div>
+    </section>
+
+    <section class="row g-4 mood-grid">
+        <div class="col-md-4">
+            <article class="mood-card">
+                <p class="mood-kicker">Curadoria</p>
+                <h3>Menos painel, mais acervo</h3>
+                <p class="mood-copy mb-0">A pagina agora abre com atmosfera, textura e prioridade visual coerentes com um sistema voltado a musica.</p>
+            </article>
+        </div>
+        <div class="col-md-4">
+            <article class="mood-card">
+                <p class="mood-kicker">Descoberta</p>
+                <h3>Fluxo de entrada claro</h3>
+                <p class="mood-copy mb-0">Biblioteca e importacao aparecem como movimentos naturais da sessao, nao como lista burocratica de links.</p>
+            </article>
+        </div>
+        <div class="col-md-4">
+            <article class="mood-card">
+                <p class="mood-kicker">Atmosfera</p>
+                <h3>Visual com memoria de audio</h3>
+                <p class="mood-copy mb-0">Vinil, waveform, contraste escuro e tipografia editorial reforcam a identidade de biblioteca sonora.</p>
+            </article>
+        </div>
+    </section>
 </main>
 {% endblock %}
