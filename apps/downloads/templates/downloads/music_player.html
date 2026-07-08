@@ -51,6 +51,10 @@
         overflow-wrap: anywhere;
     }
 
+    .track-meta-line {
+        display: block;
+    }
+
     .now-panel {
         position: sticky;
         top: 5rem;
@@ -323,11 +327,29 @@
     <div class="card shadow-sm border-0 mb-4">
         <div class="card-body">
             <form method="get" class="row g-3 align-items-end">
-                <div class="col-lg-5">
+                <div class="col-lg-4">
                     <label class="form-label small text-secondary" for="filter-q">Busca</label>
-                    <input class="form-control" id="filter-q" type="search" name="q" value="{{ query }}" placeholder="Nome ou caminho">
+                    <input class="form-control" id="filter-q" type="search" name="q" value="{{ query }}" placeholder="Titulo, artista, album ou caminho">
                 </div>
-                <div class="col-sm-4 col-lg-3">
+                <div class="col-sm-4 col-lg-2">
+                    <label class="form-label small text-secondary" for="filter-artist">Artista</label>
+                    <select class="form-select" id="filter-artist" name="artist">
+                        <option value="">Todos</option>
+                        {% for artist in artists %}
+                            <option value="{{ artist }}" {% if artist == selected_artist %}selected{% endif %}>{{ artist }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-sm-4 col-lg-2">
+                    <label class="form-label small text-secondary" for="filter-album">Album</label>
+                    <select class="form-select" id="filter-album" name="album">
+                        <option value="">Todos</option>
+                        {% for album in albums %}
+                            <option value="{{ album }}" {% if album == selected_album %}selected{% endif %}>{{ album }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-sm-4 col-lg-2">
                     <label class="form-label small text-secondary" for="filter-ext">Extensao</label>
                     <select class="form-select" id="filter-ext" name="ext">
                         <option value="">Todas</option>
@@ -336,7 +358,7 @@
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-sm-4 col-lg-3">
+                <div class="col-sm-4 col-lg-2">
                     <label class="form-label small text-secondary" for="filter-root">Pasta</label>
                     <select class="form-select" id="filter-root" name="root">
                         <option value="">Todas</option>
@@ -368,12 +390,16 @@
                                 class="track-button"
                                 type="button"
                                 data-index="{{ forloop.counter0 }}"
-                                data-title="{{ file.name }}"
+                                data-title="{{ file.title }}"
+                                data-subtitle="{{ file.subtitle }}"
                                 data-path="{{ file.relative_path }}"
                                 data-src="{{ file.stream_url }}"
                             >
-                                <span class="track-title">{{ file.name }}</span>
-                                <span class="track-meta">{{ file.relative_path }}</span>
+                                <span class="track-title">{{ file.title }}</span>
+                                <span class="track-meta">
+                                    <span class="track-meta-line">{{ file.artist }}</span>
+                                    <span class="track-meta-line">{{ file.album }}{% if file.year %} • {{ file.year }}{% endif %}</span>
+                                </span>
                             </button>
                         {% endfor %}
                     </div>
@@ -389,8 +415,8 @@
             <div class="card-body">
                 <div class="cover-plate mb-3" aria-hidden="true"></div>
                 <p class="page-kicker mb-2">Tocando agora</p>
-                <h2 class="h5 mb-2" id="now-title">{% if files %}{{ files.0.name }}{% else %}Sem faixa{% endif %}</h2>
-                <p class="text-secondary small mb-0 text-break" id="now-path">{% if files %}{{ files.0.relative_path }}{% else %}Adicione arquivos ao diretorio configurado.{% endif %}</p>
+                <h2 class="h5 mb-2" id="now-title">{% if files %}{{ files.0.title }}{% else %}Sem faixa{% endif %}</h2>
+                <p class="text-secondary small mb-0 text-break" id="now-path">{% if files %}{{ files.0.subtitle }}{% else %}Adicione arquivos ao diretorio configurado.{% endif %}</p>
             </div>
         </aside>
     </div>
@@ -403,9 +429,9 @@
                 <div class="audio-player-cover" aria-hidden="true"></div>
                 <div class="audio-player-title-wrap">
                     <div class="marquee">
-                        <span class="audio-player-title" id="bar-title">{% if files %}{{ files.0.name }}{% else %}Sem faixa selecionada{% endif %}</span>
+                        <span class="audio-player-title" id="bar-title">{% if files %}{{ files.0.title }}{% else %}Sem faixa selecionada{% endif %}</span>
                     </div>
-                    <p class="audio-player-subtitle mb-0 text-break" id="bar-path">{% if files %}{{ files.0.relative_path }}{% else %}Nenhum audio disponivel{% endif %}</p>
+                    <p class="audio-player-subtitle mb-0 text-break" id="bar-path">{% if files %}{{ files.0.subtitle }}{% else %}Nenhum audio disponivel{% endif %}</p>
                 </div>
             </div>
 
@@ -542,9 +568,9 @@
             buttons.forEach((item) => item.classList.toggle("is-active", item === button));
             player.src = button.dataset.src;
             nowTitle.textContent = button.dataset.title;
-            nowPath.textContent = button.dataset.path;
+            nowPath.textContent = button.dataset.subtitle;
             barTitle.textContent = button.dataset.title;
-            barPath.textContent = button.dataset.path;
+            barPath.textContent = button.dataset.subtitle;
             currentTime.textContent = "0:00";
             durationTime.textContent = "0:00";
             progressFill.style.width = "0%";

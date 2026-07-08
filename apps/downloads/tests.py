@@ -9,6 +9,9 @@ from django.utils import timezone
 from urllib.error import URLError
 from unittest.mock import patch
 
+from apps.library.models import Album, Artist, Track
+from apps.mediafiles.models import MediaFile, MonitoredDirectory
+
 from .models import TrackImport, TrackImportItem
 from .services import _slskd_request, build_slskd_search_query, process_download_round, score_slskd_source, search_slskd_sources, update_download_statuses
 
@@ -517,6 +520,98 @@ class DownloadImportTests(TestCase):
             self.assertContains(response, "Player")
             self.assertContains(response, "nested/track.mp3")
             self.assertContains(response, reverse("downloads-file-stream"))
+
+    @patch("apps.downloads.views.MutagenFile")
+    def test_music_player_page_prefers_structured_audio_metadata(self, mutagen_file):
+        mutagen_file.return_value.tags = {
+            "title": ["Shine"],
+            "artist": ["Within Temptation"],
+            "album": ["Enter"],
+            "date": ["1997-04-07"],
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage_root = Path(temp_dir) / "music"
+            nested_dir = storage_root / "nested"
+            nested_dir.mkdir(parents=True)
+            (nested_dir / "track.mp3").write_bytes(b"audio-bytes")
+
+            with override_settings(MUSIC_STORAGE_ROOT=storage_root, SLSKD_DOWNLOADS_DIR=storage_root):
+                response = self.client.get(reverse("downloads-player"), HTTP_HOST="localhost")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Shine")
+        self.assertContains(response, "Within Temptation")
+        self.assertContains(response, "Enter")
+        self.assertContains(response, "1997")
+        self.assertNotContains(response, ">track.mp3<")
+
+    @patch("apps.downloads.views.MutagenFile")
+    def test_music_player_page_prefers_persisted_library_metadata(self, mutagen_file):
+        mutagen_file.return_value.tags = {
+            "title": ["Wrong Title"],
+            "artist": ["Wrong Artist"],
+            "album": ["Wrong Album"],
+            "date": ["2000-01-01"],
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage_root = Path(temp_dir) / "music"
+            nested_dir = storage_root / "nested"
+            nested_dir.mkdir(parents=True)
+            file_path = nested_dir / "track.mp3"
+            file_path.write_bytes(b"audio-bytes")
+
+            artist = Artist.objects.create(name="Epica", sort_name="Epica")
+            album = Album.objects.create(title="The Phantom Agony", artist=artist, release_date="2003-06-05")
+            track = Track.objects.create(title="Sensorium", artist=artist, album=album)
+            directory = MonitoredDirectory.objects.create(name="Library", path=str(storage_root))
+            MediaFile.objects.create(directory=directory, track=track, path=str(file_path.resolve()))
+
+            with override_settings(MUSIC_STORAGE_ROOT=storage_root, SLSKD_DOWNLOADS_DIR=storage_root):
+                response = self.client.get(reverse("downloads-player"), HTTP_HOST="localhost")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Sensorium")
+        self.assertContains(response, "Epica")
+        self.assertContains(response, "The Phantom Agony")
+        self.assertContains(response, "2003")
+        self.assertNotContains(response, "Wrong Title")
+
+    def test_music_player_page_filters_by_artist_and_album(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage_root = Path(temp_dir) / "music"
+            nested_dir = storage_root / "nested"
+            nested_dir.mkdir(parents=True)
+            first_file = nested_dir / "first.mp3"
+            second_file = nested_dir / "second.mp3"
+            first_file.write_bytes(b"audio-bytes")
+            second_file.write_bytes(b"audio-bytes")
+
+            artist_a = Artist.objects.create(name="Nightwish", sort_name="Nightwish")
+            album_a = Album.objects.create(title="Once", artist=artist_a, release_date="2004-06-07")
+            track_a = Track.objects.create(title="Nemo", artist=artist_a, album=album_a)
+
+            artist_b = Artist.objects.create(name="Delain", sort_name="Delain")
+            album_b = Album.objects.create(title="Lucidity", artist=artist_b, release_date="2006-09-04")
+            track_b = Track.objects.create(title="See Me in Shadow", artist=artist_b, album=album_b)
+
+            directory = MonitoredDirectory.objects.create(name="Library", path=str(storage_root))
+            MediaFile.objects.create(directory=directory, track=track_a, path=str(first_file.resolve()))
+            MediaFile.objects.create(directory=directory, track=track_b, path=str(second_file.resolve()))
+
+            with override_settings(MUSIC_STORAGE_ROOT=storage_root, SLSKD_DOWNLOADS_DIR=storage_root):
+                response = self.client.get(
+                    reverse("downloads-player"),
+                    {"artist": "Nightwish", "album": "Once"},
+                    HTTP_HOST="localhost",
+                )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Nemo")
+        self.assertNotContains(response, "See Me in Shadow")
+        self.assertContains(response, '<option value="Nightwish" selected>', html=False)
+        self.assertContains(response, '<option value="Once" selected>', html=False)
 
     @patch("apps.downloads.services._slskd_request")
     def test_update_download_statuses_saves_completed_directory_path(self, slskd_request):

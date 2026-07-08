@@ -15,6 +15,8 @@ from django.utils import timezone
 from urllib.error import URLError
 
 from apps.core.audio import stream_audio_file
+from apps.mediafiles.models import MediaFile
+from apps.scanner.services import MutagenFile
 
 from .forms import TrackImportUploadForm
 from .models import TrackImport, TrackImportItem
@@ -62,8 +64,10 @@ def _download_roots() -> list[Path]:
 
 def _downloaded_files() -> list[dict]:
     files: list[dict] = []
+    discovered_files: list[tuple[Path, Path]] = []
     seen: set[Path] = set()
-    for root in _download_roots():
+    roots = _download_roots()
+    for root in roots:
         for candidate in root.rglob("*"):
             if not candidate.is_file():
                 continue
@@ -71,35 +75,147 @@ def _downloaded_files() -> list[dict]:
             if resolved in seen:
                 continue
             seen.add(resolved)
-            stat = resolved.stat()
-            files.append(
-                {
-                    "root": root,
-                    "relative_path": resolved.relative_to(root).as_posix(),
-                    "name": resolved.name,
-                    "size": stat.st_size,
-                    "modified_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.get_current_timezone()),
-                    "stream_url": f"{reverse('downloads-file-stream')}?{urlencode({'path': resolved.relative_to(root).as_posix()})}",
-                }
-            )
+            discovered_files.append((root, resolved))
+    persisted_metadata = _persisted_file_metadata([resolved for _, resolved in discovered_files])
+    for root, resolved in discovered_files:
+        stat = resolved.stat()
+        relative_path = resolved.relative_to(root).as_posix()
+        metadata = persisted_metadata.get(str(resolved)) or _read_audio_display_metadata(resolved)
+        files.append(
+            {
+                "root": root,
+                "relative_path": relative_path,
+                "name": resolved.name,
+                "title": metadata["title"],
+                "artist": metadata["artist"],
+                "album": metadata["album"],
+                "year": metadata["year"],
+                "subtitle": _build_file_subtitle(metadata, relative_path),
+                "size": stat.st_size,
+                "modified_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.get_current_timezone()),
+                "stream_url": f"{reverse('downloads-file-stream')}?{urlencode({'path': relative_path})}",
+            }
+        )
     files.sort(key=lambda item: item["relative_path"].casefold())
     return files
 
 
-def _filter_downloaded_files(files: list[dict], *, query: str = "", extension: str = "", root: str = "") -> list[dict]:
+def _filter_downloaded_files(
+    files: list[dict],
+    *,
+    query: str = "",
+    extension: str = "",
+    root: str = "",
+    artist: str = "",
+    album: str = "",
+) -> list[dict]:
     query = query.strip().casefold()
     extension = extension.strip().casefold()
     root = root.strip().casefold()
+    artist = artist.strip().casefold()
+    album = album.strip().casefold()
     filtered: list[dict] = []
     for file in files:
-        if query and query not in file["relative_path"].casefold() and query not in file["name"].casefold():
+        if query and all(
+            query not in str(file[field]).casefold()
+            for field in ("relative_path", "name", "title", "artist", "album", "year", "subtitle")
+        ):
             continue
         if extension and file["name"].rpartition(".")[2].casefold() != extension.lstrip("."):
             continue
         if root and str(file["root"]).casefold() != root:
             continue
+        if artist and file["artist"].casefold() != artist:
+            continue
+        if album and file["album"].casefold() != album:
+            continue
         filtered.append(file)
     return filtered
+
+
+def _persisted_file_metadata(paths: list[Path]) -> dict[str, dict[str, str]]:
+    if not paths:
+        return {}
+    path_strings = [str(path) for path in paths]
+    media_files = (
+        MediaFile.objects.filter(
+            Q(path__in=path_strings) | Q(source_path__in=path_strings) | Q(storage_path__in=path_strings),
+            track__isnull=False,
+        )
+        .select_related("track__artist", "track__album")
+    )
+    metadata_by_path: dict[str, dict[str, str]] = {}
+    for media_file in media_files:
+        track = media_file.track
+        if track is None:
+            continue
+        metadata = {
+            "title": track.title,
+            "artist": track.artist.name,
+            "album": track.album.title if track.album else "Single",
+            "year": str(track.album.release_date.year) if track.album and track.album.release_date else "",
+        }
+        for candidate in (media_file.path, media_file.source_path, media_file.storage_path):
+            if candidate and candidate in path_strings:
+                metadata_by_path[candidate] = metadata
+    return metadata_by_path
+
+
+def _read_audio_display_metadata(path: Path) -> dict[str, str]:
+    fallback = {
+        "title": path.stem,
+        "artist": "Artista desconhecido",
+        "album": "Single",
+        "year": "",
+    }
+    if MutagenFile is None:
+        return fallback
+
+    try:
+        audio = MutagenFile(path, easy=True)
+    except Exception:
+        return fallback
+
+    tags = getattr(audio, "tags", None) or {}
+    if not tags:
+        return fallback
+
+    return {
+        "title": _first_tag(tags, "title") or fallback["title"],
+        "artist": _first_tag(tags, "artist", "albumartist") or fallback["artist"],
+        "album": _first_tag(tags, "album") or fallback["album"],
+        "year": _extract_year(tags),
+    }
+
+
+def _first_tag(tags: dict, *names: str) -> str:
+    for name in names:
+        value = tags.get(name)
+        if isinstance(value, list):
+            for item in value:
+                text = str(item).strip()
+                if text:
+                    return text
+        elif value is not None:
+            text = str(value).strip()
+            if text:
+                return text
+    return ""
+
+
+def _extract_year(tags: dict) -> str:
+    raw_value = _first_tag(tags, "date", "year", "originaldate")
+    if not raw_value:
+        return ""
+    return raw_value[:4] if len(raw_value) >= 4 else raw_value
+
+
+def _build_file_subtitle(metadata: dict[str, str], relative_path: str) -> str:
+    parts = [metadata["artist"], metadata["album"]]
+    if metadata["year"]:
+        parts.append(metadata["year"])
+    subtitle = " • ".join(part for part in parts if part)
+    return subtitle or relative_path
 
 
 def _build_import_filters(request: HttpRequest) -> dict[str, str]:
@@ -277,8 +393,12 @@ def music_player(request: HttpRequest) -> HttpResponse:
     query = str(request.GET.get("q") or "")
     extension = str(request.GET.get("ext") or "")
     root = str(request.GET.get("root") or "")
-    files = _filter_downloaded_files(all_files, query=query, extension=extension, root=root)
+    artist = str(request.GET.get("artist") or "")
+    album = str(request.GET.get("album") or "")
+    files = _filter_downloaded_files(all_files, query=query, extension=extension, root=root, artist=artist, album=album)
     extensions = sorted({f".{file['name'].rpartition('.')[2].casefold()}" for file in all_files if file["name"].rpartition(".")[2]})
+    artists = sorted({file["artist"] for file in all_files if file["artist"]}, key=str.casefold)
+    albums = sorted({file["album"] for file in all_files if file["album"]}, key=str.casefold)
     return render(
         request,
         "downloads/music_player.html",
@@ -288,7 +408,11 @@ def music_player(request: HttpRequest) -> HttpResponse:
             "file_count": len(files),
             "all_file_count": len(all_files),
             "extensions": extensions,
+            "artists": artists,
+            "albums": albums,
             "query": query,
+            "selected_artist": artist,
+            "selected_album": album,
             "selected_extension": extension,
             "selected_root": root,
         },
