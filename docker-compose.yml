@@ -36,6 +36,7 @@ services:
       gunicorn config.wsgi:application --bind 0.0.0.0:8000 --timeout 120"
     volumes:
       - .:/app
+      - ${MUSIC_DIR:-../music}:/music
     depends_on:
       db:
         condition: service_healthy
@@ -52,6 +53,7 @@ services:
     command: celery -A config worker -l info
     volumes:
       - .:/app
+      - ${MUSIC_DIR:-../music}:/music
     depends_on:
       db:
         condition: service_healthy
@@ -84,13 +86,13 @@ services:
     image: slskd/slskd:latest
     environment:
       SLSKD_REMOTE_CONFIGURATION: "true"
-      SLSKD_DOWNLOADS_DIR: /downloads
+      SLSKD_DOWNLOADS_DIR: ${SLSKD_DOWNLOADS_DIR:-/music}
       SLSKD_API_KEY: ${API}
       SLSKD_SLSK_USERNAME: ${USUARIO}
       SLSKD_SLSK_PASSWORD: ${SENHA}
     volumes:
       - slskd_data:/app
-      - ./music:/downloads
+      - ${MUSIC_DIR:-../music}:/music
     ports:
       - "5030:5030"
 
