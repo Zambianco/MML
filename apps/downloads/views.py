@@ -272,6 +272,29 @@ def download_files(request: HttpRequest) -> HttpResponse:
     )
 
 
+def music_player(request: HttpRequest) -> HttpResponse:
+    all_files = _downloaded_files()
+    query = str(request.GET.get("q") or "")
+    extension = str(request.GET.get("ext") or "")
+    root = str(request.GET.get("root") or "")
+    files = _filter_downloaded_files(all_files, query=query, extension=extension, root=root)
+    extensions = sorted({f".{file['name'].rpartition('.')[2].casefold()}" for file in all_files if file["name"].rpartition(".")[2]})
+    return render(
+        request,
+        "downloads/music_player.html",
+        {
+            "download_roots": _download_roots(),
+            "files": files,
+            "file_count": len(files),
+            "all_file_count": len(all_files),
+            "extensions": extensions,
+            "query": query,
+            "selected_extension": extension,
+            "selected_root": root,
+        },
+    )
+
+
 def import_detail(request: HttpRequest, pk: int) -> HttpResponse:
     track_import = get_object_or_404(TrackImport, pk=pk)
     return render(

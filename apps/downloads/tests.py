@@ -503,6 +503,21 @@ class DownloadImportTests(TestCase):
             self.assertContains(response, "nested/track.flac")
             self.assertNotContains(response, "nested/track.mp3")
 
+    def test_music_player_page_lists_files_with_stream_urls(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage_root = Path(temp_dir) / "music"
+            nested_dir = storage_root / "nested"
+            nested_dir.mkdir(parents=True)
+            (nested_dir / "track.mp3").write_bytes(b"audio-bytes")
+
+            with override_settings(MUSIC_STORAGE_ROOT=storage_root, SLSKD_DOWNLOADS_DIR=storage_root):
+                response = self.client.get(reverse("downloads-player"), HTTP_HOST="localhost")
+
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, "Player")
+            self.assertContains(response, "nested/track.mp3")
+            self.assertContains(response, reverse("downloads-file-stream"))
+
     @patch("apps.downloads.services._slskd_request")
     def test_update_download_statuses_saves_completed_directory_path(self, slskd_request):
         track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)

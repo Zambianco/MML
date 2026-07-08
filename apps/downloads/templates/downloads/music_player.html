@@ -1,0 +1,292 @@
+{% extends "base.html" %}
+
+{% block title %}Player | My Music Library{% endblock %}
+
+{% block extra_head %}
+<style>
+    .player-shell {
+        padding-bottom: 8.5rem;
+    }
+
+    .player-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 320px;
+        gap: 1rem;
+    }
+
+    .track-list {
+        display: grid;
+        gap: 0.55rem;
+    }
+
+    .track-button {
+        width: 100%;
+        border: 1px solid var(--app-border);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--app-text-primary);
+        padding: 0.8rem 0.9rem;
+        text-align: left;
+        transition: border-color 0.15s ease, background 0.15s ease;
+    }
+
+    .track-button:hover,
+    .track-button.is-active {
+        border-color: rgba(212, 163, 115, 0.55);
+        background: rgba(212, 163, 115, 0.1);
+    }
+
+    .track-title {
+        display: block;
+        font-weight: 650;
+        overflow-wrap: anywhere;
+    }
+
+    .track-meta {
+        display: block;
+        color: var(--app-text-secondary);
+        font-size: 0.82rem;
+        margin-top: 0.2rem;
+        overflow-wrap: anywhere;
+    }
+
+    .now-panel {
+        position: sticky;
+        top: 5rem;
+    }
+
+    .cover-plate {
+        aspect-ratio: 1;
+        border-radius: 8px;
+        background:
+            radial-gradient(circle at center, transparent 0 18%, rgba(15, 10, 10, 0.95) 19% 26%, transparent 27%),
+            conic-gradient(from 120deg, #201716, #d4a373, #4f3429, #15100f, #b4503c, #201716);
+        border: 1px solid var(--app-border);
+        box-shadow: inset 0 0 0 18px rgba(0, 0, 0, 0.24);
+    }
+
+    .player-bar {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 20;
+        border-top: 1px solid var(--app-border);
+        background: rgba(15, 10, 10, 0.94);
+        backdrop-filter: blur(18px);
+    }
+
+    .player-bar-inner {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(260px, 42vw);
+        gap: 1rem;
+        align-items: center;
+        padding: 0.85rem 0;
+    }
+
+    .icon-button {
+        width: 2.4rem;
+        height: 2.4rem;
+        border-radius: 50%;
+        border: 1px solid var(--app-border);
+        background: rgba(255, 255, 255, 0.05);
+        color: var(--app-text-primary);
+    }
+
+    @media (max-width: 900px) {
+        .player-grid,
+        .player-bar-inner {
+            grid-template-columns: 1fr;
+        }
+
+        .now-panel {
+            position: static;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="container app-page player-shell py-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+        <div>
+            <p class="page-kicker mb-1">Acervo baixado</p>
+            <h1 class="h3 mb-0 fw-bold">Player</h1>
+            <p class="text-secondary small mt-1 mb-0">{{ file_count }} arquivo(s) pronto(s) para tocar.</p>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <a class="btn btn-outline-dark btn-sm" href="{% url 'downloads-files' %}">Arquivos</a>
+            <a class="btn btn-outline-dark btn-sm" href="{% url 'downloads-import-list' %}">Importacoes</a>
+            <a class="btn btn-outline-secondary btn-sm" href="{% url 'library-dashboard' %}">Biblioteca</a>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+            <form method="get" class="row g-3 align-items-end">
+                <div class="col-lg-5">
+                    <label class="form-label small text-secondary" for="filter-q">Busca</label>
+                    <input class="form-control" id="filter-q" type="search" name="q" value="{{ query }}" placeholder="Nome ou caminho">
+                </div>
+                <div class="col-sm-4 col-lg-3">
+                    <label class="form-label small text-secondary" for="filter-ext">Extensao</label>
+                    <select class="form-select" id="filter-ext" name="ext">
+                        <option value="">Todas</option>
+                        {% for ext in extensions %}
+                            <option value="{{ ext }}" {% if ext == selected_extension %}selected{% endif %}>{{ ext }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-sm-4 col-lg-3">
+                    <label class="form-label small text-secondary" for="filter-root">Pasta</label>
+                    <select class="form-select" id="filter-root" name="root">
+                        <option value="">Todas</option>
+                        {% for root in download_roots %}
+                            <option value="{{ root }}" {% if root|stringformat:"s" == selected_root %}selected{% endif %}>{{ root }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-sm-4 col-lg-1 d-grid">
+                    <button class="btn btn-dark" type="submit">Filtrar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="player-grid">
+        <section class="card shadow-sm border-0">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
+                    <h2 class="h5 mb-0">Faixas</h2>
+                    {% if all_file_count != file_count %}
+                        <span class="small text-secondary">de {{ all_file_count }} total(is)</span>
+                    {% endif %}
+                </div>
+                {% if files %}
+                    <div class="track-list" id="track-list">
+                        {% for file in files %}
+                            <button
+                                class="track-button"
+                                type="button"
+                                data-index="{{ forloop.counter0 }}"
+                                data-title="{{ file.name }}"
+                                data-path="{{ file.relative_path }}"
+                                data-src="{{ file.stream_url }}"
+                            >
+                                <span class="track-title">{{ file.name }}</span>
+                                <span class="track-meta">{{ file.relative_path }}</span>
+                            </button>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center py-5">
+                        <p class="mb-0 text-secondary">Nenhum arquivo encontrado nas pastas configuradas.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </section>
+
+        <aside class="card shadow-sm border-0 now-panel">
+            <div class="card-body">
+                <div class="cover-plate mb-3" aria-hidden="true"></div>
+                <p class="page-kicker mb-2">Tocando agora</p>
+                <h2 class="h5 mb-2" id="now-title">{% if files %}{{ files.0.name }}{% else %}Sem faixa{% endif %}</h2>
+                <p class="text-secondary small mb-0 text-break" id="now-path">{% if files %}{{ files.0.relative_path }}{% else %}Adicione arquivos ao diretorio configurado.{% endif %}</p>
+            </div>
+        </aside>
+    </div>
+</main>
+
+<div class="player-bar">
+    <div class="container player-bar-inner">
+        <div class="text-break">
+            <strong id="bar-title">{% if files %}{{ files.0.name }}{% else %}Sem faixa selecionada{% endif %}</strong>
+            <div class="small text-secondary" id="bar-path">{% if files %}{{ files.0.relative_path }}{% else %}Nenhum audio disponivel{% endif %}</div>
+        </div>
+        <div class="d-flex gap-2 justify-content-center">
+            <button class="icon-button" type="button" id="prev-track" aria-label="Faixa anterior">&lt;</button>
+            <button class="icon-button is-active" type="button" id="shuffle-track" aria-label="Modo aleatorio ativado">mix</button>
+            <button class="icon-button" type="button" id="next-track" aria-label="Proxima faixa">&gt;</button>
+        </div>
+        <audio id="main-player" controls preload="none" class="w-100" {% if files %}src="{{ files.0.stream_url }}"{% endif %}></audio>
+    </div>
+</div>
+
+<script>
+    (() => {
+        const player = document.getElementById("main-player");
+        const buttons = Array.from(document.querySelectorAll(".track-button"));
+        const nowTitle = document.getElementById("now-title");
+        const nowPath = document.getElementById("now-path");
+        const barTitle = document.getElementById("bar-title");
+        const barPath = document.getElementById("bar-path");
+        const previous = document.getElementById("prev-track");
+        const next = document.getElementById("next-track");
+        const shuffle = document.getElementById("shuffle-track");
+        let activeIndex = buttons.length ? 0 : -1;
+        let shuffleEnabled = true;
+
+        function selectTrack(index, autoplay = true) {
+            if (!buttons[index]) {
+                return;
+            }
+            const button = buttons[index];
+            activeIndex = index;
+            buttons.forEach((item) => item.classList.toggle("is-active", item === button));
+            player.src = button.dataset.src;
+            nowTitle.textContent = button.dataset.title;
+            nowPath.textContent = button.dataset.path;
+            barTitle.textContent = button.dataset.title;
+            barPath.textContent = button.dataset.path;
+            if (autoplay) {
+                player.play().catch(() => {});
+            }
+        }
+
+        buttons.forEach((button, index) => {
+            button.addEventListener("click", () => selectTrack(index));
+        });
+
+        function randomNextIndex() {
+            if (buttons.length < 2) {
+                return activeIndex;
+            }
+            let nextIndex = activeIndex;
+            while (nextIndex === activeIndex) {
+                nextIndex = Math.floor(Math.random() * buttons.length);
+            }
+            return nextIndex;
+        }
+
+        previous.addEventListener("click", () => {
+            if (!buttons.length) {
+                return;
+            }
+            selectTrack((activeIndex - 1 + buttons.length) % buttons.length);
+        });
+
+        next.addEventListener("click", () => {
+            if (!buttons.length) {
+                return;
+            }
+            selectTrack(shuffleEnabled ? randomNextIndex() : (activeIndex + 1) % buttons.length);
+        });
+
+        shuffle.addEventListener("click", () => {
+            shuffleEnabled = !shuffleEnabled;
+            shuffle.classList.toggle("is-active", shuffleEnabled);
+            shuffle.setAttribute("aria-label", shuffleEnabled ? "Modo aleatorio ativado" : "Modo aleatorio desativado");
+        });
+
+        player.addEventListener("ended", () => {
+            if (buttons.length > 1) {
+                selectTrack(shuffleEnabled ? randomNextIndex() : (activeIndex + 1) % buttons.length);
+            }
+        });
+
+        if (buttons.length) {
+            buttons[0].classList.add("is-active");
+        }
+    })();
+</script>
+{% endblock %}
