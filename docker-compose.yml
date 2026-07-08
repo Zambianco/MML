@@ -85,6 +85,9 @@ services:
     environment:
       SLSKD_REMOTE_CONFIGURATION: "true"
       SLSKD_DOWNLOADS_DIR: /downloads
+      SLSKD_API_KEY: ${API}
+      SLSKD_SLSK_USERNAME: ${USUARIO}
+      SLSKD_SLSK_PASSWORD: ${SENHA}
     volumes:
       - slskd_data:/app
       - ./music:/downloads
