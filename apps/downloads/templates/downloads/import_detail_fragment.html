@@ -1,1 +1,8 @@
-{% include "downloads/import_detail_panel.html" %}
+<div id="import-detail-panel"
+    {% if track_import.is_processing %}
+        hx-get="{% url 'downloads-import-detail-fragment' track_import.pk %}{% if querystring %}?{{ querystring }}&page={{ page_obj.number }}{% else %}?page={{ page_obj.number }}{% endif %}"
+        hx-trigger="every 10s"
+        hx-swap="outerHTML"
+    {% endif %}>
+    {% include "downloads/import_detail_panel.html" %}
+</div>

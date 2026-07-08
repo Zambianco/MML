@@ -6,6 +6,11 @@ class TrackImport(models.Model):
     source_name = models.CharField(max_length=255)
     delimiter = models.CharField(max_length=1, default=";")
     item_count = models.PositiveIntegerField(default=0)
+    processing_task_id = models.CharField(max_length=255, blank=True)
+    processing_started_at = models.DateTimeField(blank=True, null=True)
+    processing_finished_at = models.DateTimeField(blank=True, null=True)
+    cancel_requested_at = models.DateTimeField(blank=True, null=True)
+    processing_last_error = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -13,6 +18,10 @@ class TrackImport(models.Model):
 
     def __str__(self) -> str:
         return self.source_name
+
+    @property
+    def is_processing(self) -> bool:
+        return self.processing_started_at is not None and self.processing_finished_at is None
 
 
 class TrackImportItem(models.Model):

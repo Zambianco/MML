@@ -5,6 +5,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 from urllib.error import URLError
 from unittest.mock import patch
 
@@ -217,9 +218,9 @@ class DownloadImportTests(TestCase):
         self.assertContains(response, "Track 26")
         self.assertNotContains(response, "Track 01")
 
-    @patch("apps.downloads.views.process_download_round")
-    def test_process_round_uses_limit(self, process_download_round):
-        process_download_round.return_value = {"searched": 2, "queued": 2, "without_source": 0}
+    @patch("apps.downloads.views.process_download_round_task.delay")
+    def test_process_round_uses_limit(self, delay):
+        delay.return_value.id = "task-1"
         track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=2)
 
         response = self.client.post(
@@ -229,7 +230,27 @@ class DownloadImportTests(TestCase):
         )
 
         self.assertRedirects(response, reverse("downloads-import-detail", args=[track_import.pk]))
-        process_download_round.assert_called_once_with(track_import, limit=2)
+        delay.assert_called_once_with(track_import.pk, limit=2)
+        track_import.refresh_from_db()
+        self.assertEqual(track_import.processing_task_id, "task-1")
+        self.assertTrue(track_import.is_processing)
+
+    def test_cancel_round_marks_import_for_cancellation(self):
+        track_import = TrackImport.objects.create(
+            source_name="downloads.csv",
+            item_count=2,
+            processing_task_id="task-1",
+            processing_started_at=timezone.now(),
+        )
+
+        response = self.client.post(
+            reverse("downloads-cancel-round", args=[track_import.pk]),
+            HTTP_HOST="localhost",
+        )
+
+        self.assertRedirects(response, reverse("downloads-import-detail", args=[track_import.pk]))
+        track_import.refresh_from_db()
+        self.assertIsNotNone(track_import.cancel_requested_at)
 
     @patch("apps.downloads.views.search_slskd_sources")
     def test_item_search_uses_row(self, search_slskd_sources):

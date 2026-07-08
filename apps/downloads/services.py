@@ -7,6 +7,7 @@ import unicodedata
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from pathlib import Path
+from typing import Callable
 from urllib.error import URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -361,7 +362,7 @@ def update_download_statuses(track_import: TrackImport, enqueue_next: bool = Tru
     return summary
 
 
-def process_download_round(track_import: TrackImport, limit: int = 0) -> dict[str, int]:
+def process_download_round(track_import: TrackImport, limit: int = 0, should_cancel: Callable[[], bool] | None = None) -> dict[str, int]:
     items = track_import.items.filter(
         status__in=[
             TrackImportItem.STATUS_PENDING,
@@ -372,8 +373,12 @@ def process_download_round(track_import: TrackImport, limit: int = 0) -> dict[st
     if limit > 0:
         items = items[:limit]
 
-    summary = {"searched": 0, "queued": 0, "without_source": 0}
+    summary = {"searched": 0, "queued": 0, "without_source": 0, "cancelled": 0}
     for item in items:
+        if should_cancel is not None and should_cancel():
+            summary["cancelled"] = 1
+            break
+
         item.status = TrackImportItem.STATUS_SEARCHING
         item.save(update_fields=["status", "updated_at"])
         try:
@@ -384,6 +389,12 @@ def process_download_round(track_import: TrackImport, limit: int = 0) -> dict[st
             item.save(update_fields=["status", "last_error", "updated_at"])
             raise
         summary["searched"] += 1
+
+        if should_cancel is not None and should_cancel():
+            item.status = TrackImportItem.STATUS_PENDING
+            item.save(update_fields=["status", "updated_at"])
+            summary["cancelled"] = 1
+            break
 
         source = sources[0] if sources else None
         if not source:

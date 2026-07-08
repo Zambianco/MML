@@ -57,20 +57,40 @@
 
 <div class="card shadow-sm border-0 mb-4">
     <div class="card-body">
+        {% if track_import.is_processing %}
+            <div class="alert alert-info mb-3">
+                <div class="fw-semibold">
+                    {% if track_import.cancel_requested_at %}Cancelamento solicitado{% else %}Rodada em background{% endif %}
+                </div>
+                <div class="small">Faltam {{ queue_remaining_count }} faixa(s) para buscar/enfileirar.</div>
+            </div>
+        {% elif track_import.processing_last_error %}
+            <div class="alert alert-danger mb-3">Ultima rodada falhou: {{ track_import.processing_last_error }}</div>
+        {% elif track_import.processing_finished_at %}
+            <div class="alert alert-success mb-3">Ultima rodada finalizada.</div>
+        {% endif %}
         <form class="row g-2 align-items-end" method="post" action="{% url 'downloads-process-round' track_import.pk %}{% if querystring %}?{{ querystring }}{% endif %}">
             {% csrf_token %}
             <div class="col-sm-3">
                 <label class="form-label small text-secondary" for="round-limit">Limite da rodada</label>
-                <input class="form-control" id="round-limit" type="number" name="limit" min="0" value="5">
+                <input class="form-control" id="round-limit" type="number" name="limit" min="0" value="5" {% if track_import.is_processing %}disabled{% endif %}>
             </div>
             <div class="col-sm-auto">
-                <button class="btn btn-dark" type="submit">Buscar e enfileirar</button>
+                <button class="btn btn-dark" type="submit" {% if track_import.is_processing %}disabled{% endif %}>Buscar e enfileirar</button>
             </div>
         </form>
-        <form class="mt-2" method="post" action="{% url 'downloads-refresh-status' track_import.pk %}{% if querystring %}?{{ querystring }}{% endif %}">
-            {% csrf_token %}
-            <button class="btn btn-outline-dark btn-sm" type="submit">Atualizar status e tentar proxima fonte</button>
-        </form>
+        <div class="mt-2 d-flex gap-2 flex-wrap">
+            <form method="post" action="{% url 'downloads-refresh-status' track_import.pk %}{% if querystring %}?{{ querystring }}{% endif %}">
+                {% csrf_token %}
+                <button class="btn btn-outline-dark btn-sm" type="submit">Atualizar status e tentar proxima fonte</button>
+            </form>
+            {% if track_import.is_processing %}
+                <form method="post" action="{% url 'downloads-cancel-round' track_import.pk %}{% if querystring %}?{{ querystring }}{% endif %}">
+                    {% csrf_token %}
+                    <button class="btn btn-outline-danger btn-sm" type="submit" {% if track_import.cancel_requested_at %}disabled{% endif %}>Cancelar rodada</button>
+                </form>
+            {% endif %}
+        </div>
     </div>
 </div>
 

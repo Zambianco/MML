@@ -19,12 +19,12 @@ from .models import TrackImport, TrackImportItem
 from .services import (
     create_track_import,
     enqueue_best_available_source,
-    process_download_round,
     refresh_auto_item_search_query,
     sync_item_search_query,
     search_slskd_sources,
     update_download_statuses,
 )
+from .tasks import process_download_round_task
 
 ITEMS_PER_PAGE = 25
 
@@ -196,6 +196,11 @@ def _import_detail_context(
         else:
             track_import = TrackImport.objects.prefetch_related("items__sources").get(pk=track_import.pk)
     status_counts = dict(track_import.items.values_list("status").annotate(total=Count("id")))
+    queue_remaining_count = (
+        status_counts.get(TrackImportItem.STATUS_PENDING, 0)
+        + status_counts.get(TrackImportItem.STATUS_SEARCHING, 0)
+        + status_counts.get(TrackImportItem.STATUS_ERROR, 0)
+    )
     filters = filters or {"q": "", "status": "", "downloaded": ""}
     items = _filter_import_items(
         track_import.items.prefetch_related("sources").all(),
@@ -211,6 +216,7 @@ def _import_detail_context(
         "items": page_obj,
         "page_obj": page_obj,
         "status_counts": status_counts,
+        "queue_remaining_count": queue_remaining_count,
         "query_params": query_params,
         "querystring": querystring,
         "filters": filters,
@@ -297,15 +303,39 @@ def import_detail_fragment(request: HttpRequest, pk: int) -> HttpResponse:
 def process_round(request: HttpRequest, pk: int) -> HttpResponse:
     track_import = get_object_or_404(TrackImport, pk=pk)
     limit = int(request.POST.get("limit") or 0)
-    try:
-        summary = process_download_round(track_import, limit=limit)
-    except URLError as exc:
-        messages.error(request, f"Nao foi possivel conectar ao slskd: {exc.reason}")
+    if track_import.is_processing:
+        messages.warning(request, "Ja existe uma rodada em processamento para esta importacao.")
     else:
-        messages.success(
-            request,
-            f"Rodada concluida: {summary['searched']} busca(s), {summary['queued']} download(s) enfileirado(s).",
+        track_import.processing_started_at = timezone.now()
+        track_import.processing_finished_at = None
+        track_import.cancel_requested_at = None
+        track_import.processing_last_error = ""
+        track_import.save(
+            update_fields=[
+                "processing_started_at",
+                "processing_finished_at",
+                "cancel_requested_at",
+                "processing_last_error",
+            ]
         )
+        task = process_download_round_task.delay(track_import.pk, limit=limit)
+        track_import.processing_task_id = task.id
+        track_import.save(update_fields=["processing_task_id"])
+        messages.success(request, "Rodada enviada para processamento em background.")
+    return redirect(_import_detail_url(track_import, page=request.GET.get("page"), querystring=_preserved_import_querystring(request)))
+
+
+@require_http_methods(["POST"])
+def cancel_round(request: HttpRequest, pk: int) -> HttpResponse:
+    track_import = get_object_or_404(TrackImport, pk=pk)
+    if not track_import.is_processing:
+        messages.info(request, "Nao ha rodada em processamento para cancelar.")
+    elif track_import.cancel_requested_at is not None:
+        messages.info(request, "O cancelamento desta rodada ja foi solicitado.")
+    else:
+        track_import.cancel_requested_at = timezone.now()
+        track_import.save(update_fields=["cancel_requested_at"])
+        messages.warning(request, "Cancelamento solicitado. A rodada vai parar no proximo item.")
     return redirect(_import_detail_url(track_import, page=request.GET.get("page"), querystring=_preserved_import_querystring(request)))
 
 
