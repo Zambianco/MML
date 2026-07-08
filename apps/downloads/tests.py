@@ -406,6 +406,33 @@ class DownloadImportTests(TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertEqual(b"".join(response.streaming_content), b"audio-bytes")
 
+    def test_item_download_resolves_path_with_storage_root_prefix(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage_root = Path(temp_dir) / "music"
+            album_dir = storage_root / "Tubular Bells (1973)"
+            album_dir.mkdir(parents=True)
+            file_path = album_dir / "01 - Tubular Bells (Pt. I).flac"
+            file_path.write_bytes(b"audio-bytes")
+
+            with override_settings(MUSIC_STORAGE_ROOT=storage_root, SLSKD_DOWNLOADS_DIR=storage_root):
+                track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
+                item = TrackImportItem.objects.create(
+                    track_import=track_import,
+                    row_number=1,
+                    artists="Mike Oldfield",
+                    name="Tubular Bells (Pt. I)",
+                    search_query="Mike Oldfield Tubular Bells",
+                    download_path="music\\Mike Oldfield\\Tubular Bells (1973)\\01 - Tubular Bells (Pt. I).flac",
+                )
+
+                response = self.client.get(
+                    reverse("downloads-item-download", args=[track_import.pk, item.pk]),
+                    HTTP_HOST="localhost",
+                )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(b"".join(response.streaming_content), b"audio-bytes")
+
     def test_download_files_page_lists_files(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             storage_root = Path(temp_dir) / "music"

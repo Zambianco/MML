@@ -149,6 +149,14 @@ def _resolve_local_download_path(download_path: str) -> Path | None:
         candidates = []
     else:
         candidates = [root / path for root in roots]
+        path_parts = path.parts
+        if path_parts:
+            leading_segment = path_parts[0].casefold()
+            trimmed_path = Path(*path_parts[1:]) if len(path_parts) > 1 else None
+            if trimmed_path is not None:
+                for root in roots:
+                    if leading_segment == root.name.casefold():
+                        candidates.append(root / trimmed_path)
     for candidate in candidates:
         try:
             resolved = candidate.resolve(strict=True)
