@@ -17,3 +17,5 @@ redis_data/
 slskd_data/
 
 music/library/*
+*.flac
+*.mp3
