@@ -9,7 +9,7 @@ from urllib.error import URLError
 from unittest.mock import patch
 
 from .models import TrackImport, TrackImportItem
-from .services import _slskd_request, build_slskd_search_query, process_download_round, score_slskd_source, search_slskd_sources
+from .services import _slskd_request, build_slskd_search_query, process_download_round, score_slskd_source, search_slskd_sources, update_download_statuses
 
 
 class FakeResponse:
@@ -352,6 +352,33 @@ class DownloadImportTests(TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertEqual(b"".join(response.streaming_content), b"audio-bytes")
 
+    def test_item_download_resolves_windows_style_relative_path(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage_root = Path(temp_dir) / "music"
+            storage_root.mkdir()
+            file_path = storage_root / "nested" / "file.flac"
+            file_path.parent.mkdir()
+            file_path.write_bytes(b"audio-bytes")
+
+            with override_settings(MUSIC_STORAGE_ROOT=storage_root, SLSKD_DOWNLOADS_DIR=storage_root):
+                track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
+                item = TrackImportItem.objects.create(
+                    track_import=track_import,
+                    row_number=1,
+                    artists="Elysion",
+                    name="Fairytale",
+                    search_query="Elysion Fairytale",
+                    download_path="nested\\file.flac",
+                )
+
+                response = self.client.get(
+                    reverse("downloads-item-download", args=[track_import.pk, item.pk]),
+                    HTTP_HOST="localhost",
+                )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(b"".join(response.streaming_content), b"audio-bytes")
+
     def test_item_download_serves_absolute_transfer_path(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             storage_root = Path(temp_dir) / "music"
@@ -397,6 +424,49 @@ class DownloadImportTests(TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertContains(response, "nested/track.flac")
             self.assertNotContains(response, "nested/track.mp3")
+
+    @patch("apps.downloads.services._slskd_request")
+    def test_update_download_statuses_saves_completed_directory_path(self, slskd_request):
+        track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
+        item = TrackImportItem.objects.create(
+            track_import=track_import,
+            row_number=1,
+            artists="Delain",
+            name="Lost",
+            search_query="Delain Lost",
+            status=TrackImportItem.STATUS_DOWNLOADING,
+            download_path="09 - Lost.flac",
+        )
+        source = item.sources.create(
+            rank=1,
+            username="user",
+            remote_filename="09 - Lost.flac",
+            download_state="InProgress",
+        )
+        source.mark_requested()
+        slskd_request.return_value = [
+            {
+                "username": "user",
+                "directories": [
+                    {
+                        "directory": "April Rain (Special Edition) [2009] [Album]",
+                        "files": [
+                            {
+                                "filename": "09 - Lost.flac",
+                                "state": "Completed, Succeeded",
+                                "percentComplete": 100,
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
+
+        update_download_statuses(track_import, enqueue_next=False)
+
+        item.refresh_from_db()
+        self.assertEqual(item.status, TrackImportItem.STATUS_DONE)
+        self.assertEqual(item.download_path, "April Rain (Special Edition) [2009] [Album]/09 - Lost.flac")
 
     def test_item_query_update_manual(self):
         track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)

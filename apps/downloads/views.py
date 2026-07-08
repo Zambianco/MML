@@ -135,7 +135,8 @@ def _filter_import_items(items, *, query: str = "", status: str = "", downloaded
 def _resolve_local_download_path(download_path: str) -> Path | None:
     if not download_path.strip():
         return None
-    path = Path(download_path)
+    normalized_download_path = download_path.strip().replace("\\", "/")
+    path = Path(normalized_download_path)
     roots = [Path(settings.SLSKD_DOWNLOADS_DIR), Path(settings.MUSIC_STORAGE_ROOT)]
     if path.is_absolute():
         try:
@@ -159,7 +160,7 @@ def _resolve_local_download_path(download_path: str) -> Path | None:
             resolved_root = root.resolve()
             if resolved_root in resolved.parents or resolved == resolved_root:
                 return resolved
-    filename = path.name
+    filename = Path(normalized_download_path.rsplit("/", 1)[-1]).name
     for root in roots:
         if not root.exists():
             continue

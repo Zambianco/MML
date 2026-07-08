@@ -6,6 +6,7 @@ import time
 import unicodedata
 from dataclasses import dataclass
 from difflib import SequenceMatcher
+from pathlib import Path
 from urllib.error import URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -275,11 +276,31 @@ def _download_index() -> dict[tuple[str, str], dict]:
     for user_data in _slskd_request("GET", "/api/v0/transfers/downloads") or []:
         username = str(user_data.get("username") or "").strip().casefold()
         for directory in user_data.get("directories") or []:
+            directory_path = str(
+                directory.get("directory")
+                or directory.get("path")
+                or directory.get("name")
+                or ""
+            ).strip()
             for file_data in directory.get("files") or []:
                 filename = str(file_data.get("filename") or "")
                 if username and filename:
-                    index[(username, filename.casefold())] = file_data
+                    transfer_data = dict(file_data)
+                    if directory_path:
+                        transfer_data["_directory_path"] = directory_path
+                    index[(username, filename.casefold())] = transfer_data
     return index
+
+
+def _build_download_path_from_transfer(transfer: dict) -> str:
+    filename = str(transfer.get("filename") or "").strip().replace("\\", "/")
+    directory_path = str(transfer.get("_directory_path") or "").strip().replace("\\", "/")
+    if not directory_path:
+        return filename
+    filename_only = Path(filename).name
+    if not filename_only:
+        return directory_path
+    return str(Path(directory_path) / filename_only).replace("\\", "/")
 
 
 def _slskd_item_status(state: str) -> str:
@@ -315,7 +336,13 @@ def update_download_statuses(track_import: TrackImport, enqueue_next: bool = Tru
         source.save(update_fields=["download_state", "updated_at"])
         source.item.status = status
         source.item.download_progress = 100 if status == TrackImportItem.STATUS_DONE else progress
-        source.item.save(update_fields=["status", "download_progress", "updated_at"])
+        update_fields = ["status", "download_progress", "updated_at"]
+        if status == TrackImportItem.STATUS_DONE:
+            resolved_download_path = _build_download_path_from_transfer(transfer)
+            if resolved_download_path:
+                source.item.download_path = resolved_download_path
+                update_fields.insert(2, "download_path")
+        source.item.save(update_fields=update_fields)
         summary["updated"] += 1
 
         if status == TrackImportItem.STATUS_DONE:
