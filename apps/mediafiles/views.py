@@ -1,10 +1,13 @@
+from pathlib import Path
+
 from django.contrib import messages
 from django.db.models import Count
 from django.http import HttpRequest, HttpResponse
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
+from apps.core.audio import stream_audio_file
 from apps.library.models import Album, Artist, Track
 from apps.scanner.services import scan_monitored_directories
 
@@ -63,3 +66,11 @@ def scan_directories(request: HttpRequest) -> HttpResponse:
     if result.missing_directories:
         messages.warning(request, f"{result.missing_directories} diretorio(s) nao encontrado(s).")
     return redirect(reverse("library-dashboard"))
+
+
+def media_file_stream(request: HttpRequest, pk: int) -> HttpResponse:
+    media_file = get_object_or_404(MediaFile, pk=pk)
+    file_path = Path(media_file.source_path or media_file.path)
+    if not file_path.is_file():
+        return HttpResponse(status=404)
+    return stream_audio_file(request, file_path)

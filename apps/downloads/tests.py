@@ -345,6 +345,36 @@ class DownloadImportTests(TestCase):
             self.assertEqual(b"".join(response.streaming_content), b"audio-bytes")
             self.assertIn('attachment; filename="file.flac"', response.headers["Content-Disposition"])
 
+    def test_item_stream_serves_audio_inline_with_range_support(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage_root = Path(temp_dir) / "music"
+            storage_root.mkdir()
+            file_path = storage_root / "file.mp3"
+            file_path.write_bytes(b"audio-bytes")
+
+            with override_settings(MUSIC_STORAGE_ROOT=storage_root):
+                track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
+                item = TrackImportItem.objects.create(
+                    track_import=track_import,
+                    row_number=1,
+                    artists="Elysion",
+                    name="Fairytale",
+                    search_query="Elysion Fairytale",
+                    download_path="file.mp3",
+                )
+
+                response = self.client.get(
+                    reverse("downloads-item-stream", args=[track_import.pk, item.pk]),
+                    HTTP_RANGE="bytes=0-4",
+                    HTTP_HOST="localhost",
+                )
+
+            self.assertEqual(response.status_code, 206)
+            self.assertEqual(b"".join(response.streaming_content), b"audio")
+            self.assertEqual(response.headers["Content-Type"], "audio/mpeg")
+            self.assertEqual(response.headers["Accept-Ranges"], "bytes")
+            self.assertEqual(response.headers["Content-Range"], "bytes 0-4/11")
+
     def test_item_download_falls_back_to_source_filename_when_path_missing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             storage_root = Path(temp_dir) / "music"

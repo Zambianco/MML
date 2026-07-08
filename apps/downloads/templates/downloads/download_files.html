@@ -100,6 +100,7 @@
                                 <tr>
                                     <td class="text-break">
                                         <i class="bi bi-file-earmark-music me-2 text-secondary"></i>{{ file.relative_path }}
+                                        <audio class="w-100 mt-2" controls preload="none" src="{{ file.stream_url }}"></audio>
                                     </td>
                                     <td class="text-break">{{ file.name }}</td>
                                     <td>{{ file.size|filesizeformat }}</td>

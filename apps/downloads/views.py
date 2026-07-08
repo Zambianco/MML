@@ -14,6 +14,8 @@ from django.conf import settings
 from django.utils import timezone
 from urllib.error import URLError
 
+from apps.core.audio import stream_audio_file
+
 from .forms import TrackImportUploadForm
 from .models import TrackImport, TrackImportItem
 from .services import (
@@ -77,6 +79,7 @@ def _downloaded_files() -> list[dict]:
                     "name": resolved.name,
                     "size": stat.st_size,
                     "modified_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.get_current_timezone()),
+                    "stream_url": f"{reverse('downloads-file-stream')}?{urlencode({'path': resolved.relative_to(root).as_posix()})}",
                 }
             )
     files.sort(key=lambda item: item["relative_path"].casefold())
@@ -421,3 +424,23 @@ def item_download(request: HttpRequest, pk: int, item_pk: int) -> HttpResponse:
         messages.error(request, "Arquivo ainda nao esta disponivel no disco do sistema.")
         return redirect(_import_detail_url(track_import, page=request.GET.get("page"), querystring=_preserved_import_querystring(request)))
     return FileResponse(file_path.open("rb"), as_attachment=True, filename=file_path.name)
+
+
+def item_stream(request: HttpRequest, pk: int, item_pk: int) -> HttpResponse:
+    track_import = get_object_or_404(TrackImport, pk=pk)
+    item = get_object_or_404(TrackImportItem, pk=item_pk, track_import=track_import)
+    download_reference = item.download_path.strip()
+    if not download_reference and item.status == TrackImportItem.STATUS_DONE:
+        source = item.sources.order_by("rank", "-score").first()
+        download_reference = source.remote_filename if source else ""
+    file_path = _resolve_local_download_path(download_reference)
+    if file_path is None:
+        return HttpResponse(status=404)
+    return stream_audio_file(request, file_path)
+
+
+def file_stream(request: HttpRequest) -> HttpResponse:
+    file_path = _resolve_local_download_path(str(request.GET.get("path") or ""))
+    if file_path is None:
+        return HttpResponse(status=404)
+    return stream_audio_file(request, file_path)

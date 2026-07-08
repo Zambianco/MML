@@ -158,6 +158,7 @@
                                         {% if media_file.track.album %}• {{ media_file.track.album.title }}{% endif %}
                                     </div>
                                     <div class="text-secondary small text-break">{{ media_file.source_path|default:media_file.path }}</div>
+                                    <audio class="w-100 mt-2" controls preload="none" src="{% url 'media-file-stream' media_file.pk %}"></audio>
                                 </div>
                             {% endfor %}
                         </div>

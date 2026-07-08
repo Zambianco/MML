@@ -212,6 +212,7 @@
                                     {% csrf_token %}
                                     <button class="btn btn-dark btn-sm" type="submit">Transferir</button>
                                     {% if item.download_path %}
+                                        <audio class="w-100 mt-2" controls preload="none" src="{% url 'downloads-item-stream' track_import.pk item.pk %}"></audio>
                                         <a class="btn btn-outline-dark btn-sm" href="{% url 'downloads-item-download' track_import.pk item.pk %}">Download</a>
                                     {% else %}
                                         <span class="btn btn-outline-dark btn-sm disabled" aria-disabled="true">Download</span>
@@ -309,6 +310,7 @@
                             <button class="btn btn-dark btn-sm" type="submit">Transferir</button>
                         </form>
                         {% if item.download_path %}
+                            <audio class="w-100" controls preload="none" src="{% url 'downloads-item-stream' track_import.pk item.pk %}"></audio>
                             <a class="btn btn-outline-dark btn-sm" href="{% url 'downloads-item-download' track_import.pk item.pk %}">Download</a>
                         {% else %}
                             <span class="btn btn-outline-dark btn-sm disabled" aria-disabled="true">Download</span>

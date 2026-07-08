@@ -40,3 +40,23 @@ class LibraryDashboardTests(TestCase):
 
         self.assertRedirects(response, reverse("library-dashboard"))
         self.assertTrue(MediaFile.objects.filter(source_path=str(audio_path)).exists())
+
+    def test_media_file_stream_serves_audio_inline(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            audio_path = root / "song.mp3"
+            audio_path.write_bytes(b"audio")
+            directory = MonitoredDirectory.objects.create(name="Local", path=str(root))
+            media_file = MediaFile.objects.create(
+                directory=directory,
+                path=str(audio_path),
+                source_path=str(audio_path),
+                mime_type="audio/mpeg",
+            )
+
+            response = self.client.get(reverse("media-file-stream", args=[media_file.pk]), HTTP_HOST="localhost")
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(b"".join(response.streaming_content), b"audio")
+            self.assertEqual(response.headers["Content-Type"], "audio/mpeg")
+            self.assertEqual(response.headers["Accept-Ranges"], "bytes")
