@@ -1,3 +1,5 @@
+from functools import lru_cache
+import mimetypes
 from pathlib import Path
 from datetime import datetime
 from urllib.parse import urlencode
@@ -16,7 +18,7 @@ from urllib.error import URLError
 
 from apps.core.audio import stream_audio_file
 from apps.mediafiles.models import MediaFile
-from apps.scanner.services import MutagenFile
+from apps.scanner.services import AUDIO_EXTENSIONS, MutagenFile
 
 from .forms import TrackImportUploadForm
 from .models import TrackImport, TrackImportItem
@@ -31,6 +33,7 @@ from .services import (
 from .tasks import process_download_round_task
 
 ITEMS_PER_PAGE = 25
+LOCAL_COVER_NAMES = ("cover.jpg", "cover.jpeg", "cover.png", "cover.webp", "folder.jpg", "folder.jpeg", "folder.png", "album.jpg", "album.jpeg", "album.png")
 
 
 def _import_detail_url(track_import: TrackImport, *, page: str | None = None, querystring: str = "") -> str:
@@ -91,6 +94,7 @@ def _downloaded_files() -> list[dict]:
                 "album": metadata["album"],
                 "year": metadata["year"],
                 "subtitle": _build_file_subtitle(metadata, relative_path),
+                "cover_url": _build_cover_url(relative_path) if resolved.suffix.lower() in AUDIO_EXTENSIONS else "",
                 "size": stat.st_size,
                 "modified_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.get_current_timezone()),
                 "stream_url": f"{reverse('downloads-file-stream')}?{urlencode({'path': relative_path})}",
@@ -216,6 +220,86 @@ def _build_file_subtitle(metadata: dict[str, str], relative_path: str) -> str:
         parts.append(metadata["year"])
     subtitle = " • ".join(part for part in parts if part)
     return subtitle or relative_path
+
+
+def _build_cover_url(relative_path: str) -> str:
+    return f"{reverse('downloads-file-cover')}?{urlencode({'path': relative_path})}"
+
+
+def _local_cover_candidates(path: Path) -> list[Path]:
+    return [path.with_name(name) for name in LOCAL_COVER_NAMES]
+
+
+def _cover_cache_token(path: Path) -> tuple[tuple[str, int], ...]:
+    token = [("audio", path.stat().st_mtime_ns)]
+    for candidate in _local_cover_candidates(path):
+        if candidate.is_file():
+            token.append((candidate.name.casefold(), candidate.stat().st_mtime_ns))
+    return tuple(token)
+
+
+def _image_content_type(data: bytes, fallback: str = "image/jpeg") -> str:
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return fallback
+
+
+def _embedded_cover_asset(path: Path) -> tuple[bytes, str] | None:
+    if MutagenFile is None:
+        return None
+    try:
+        audio = MutagenFile(path)
+    except Exception:
+        return None
+    if audio is None:
+        return None
+
+    tags = getattr(audio, "tags", None)
+    if tags is not None and hasattr(tags, "getall"):
+        for frame in tags.getall("APIC"):
+            data = getattr(frame, "data", None)
+            if data:
+                return data, _image_content_type(data, getattr(frame, "mime", "") or "image/jpeg")
+        for frame in tags.getall("covr"):
+            data = bytes(frame)
+            if data:
+                return data, _image_content_type(data, "image/jpeg")
+
+    pictures = getattr(audio, "pictures", None) or []
+    if pictures:
+        picture = pictures[0]
+        data = getattr(picture, "data", None)
+        if data:
+            return data, _image_content_type(data, getattr(picture, "mime", "") or "image/jpeg")
+
+    if tags is not None:
+        covr = getattr(tags, "get", lambda _key, _default=None: None)("covr")
+        if covr:
+            data = bytes(covr[0] if isinstance(covr, list) else covr)
+            if data:
+                return data, _image_content_type(data, "image/jpeg")
+
+    return None
+
+
+def _cover_asset(path: Path) -> tuple[bytes, str] | None:
+    for candidate in _local_cover_candidates(path):
+        if not candidate.is_file():
+            continue
+        data = candidate.read_bytes()
+        return data, mimetypes.guess_type(candidate.name)[0] or _image_content_type(data)
+    return _embedded_cover_asset(path)
+
+
+@lru_cache(maxsize=256)
+def _cached_cover_asset(path_str: str, token: tuple[tuple[str, int], ...]) -> tuple[bytes, str] | None:
+    return _cover_asset(Path(path_str))
 
 
 def _build_import_filters(request: HttpRequest) -> dict[str, str]:
@@ -591,3 +675,14 @@ def file_stream(request: HttpRequest) -> HttpResponse:
     if file_path is None:
         return HttpResponse(status=404)
     return stream_audio_file(request, file_path)
+
+
+def file_cover(request: HttpRequest) -> HttpResponse:
+    file_path = _resolve_local_download_path(str(request.GET.get("path") or ""))
+    if file_path is None:
+        return HttpResponse(status=404)
+    cover_asset = _cached_cover_asset(str(file_path), _cover_cache_token(file_path))
+    if cover_asset is None:
+        return HttpResponse(status=404)
+    data, content_type = cover_asset
+    return HttpResponse(data, content_type=content_type)

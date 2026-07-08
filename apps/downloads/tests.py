@@ -512,14 +512,35 @@ class DownloadImportTests(TestCase):
             nested_dir = storage_root / "nested"
             nested_dir.mkdir(parents=True)
             (nested_dir / "track.mp3").write_bytes(b"audio-bytes")
+            (nested_dir / "cover.jpg").write_bytes(b"cover-bytes")
 
             with override_settings(MUSIC_STORAGE_ROOT=storage_root, SLSKD_DOWNLOADS_DIR=storage_root):
                 response = self.client.get(reverse("downloads-player"), HTTP_HOST="localhost")
 
-            self.assertEqual(response.status_code, 200)
-            self.assertContains(response, "Player")
-            self.assertContains(response, "nested/track.mp3")
-            self.assertContains(response, reverse("downloads-file-stream"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Player")
+        self.assertContains(response, "nested/track.mp3")
+        self.assertContains(response, reverse("downloads-file-stream"))
+        self.assertContains(response, reverse("downloads-file-cover"))
+
+    def test_file_cover_serves_adjacent_artwork(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage_root = Path(temp_dir) / "music"
+            nested_dir = storage_root / "nested"
+            nested_dir.mkdir(parents=True)
+            (nested_dir / "track.mp3").write_bytes(b"audio-bytes")
+            (nested_dir / "cover.jpg").write_bytes(b"cover-bytes")
+
+            with override_settings(MUSIC_STORAGE_ROOT=storage_root, SLSKD_DOWNLOADS_DIR=storage_root):
+                response = self.client.get(
+                    reverse("downloads-file-cover"),
+                    {"path": "nested/track.mp3"},
+                    HTTP_HOST="localhost",
+                )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/jpeg")
+        self.assertEqual(response.content, b"cover-bytes")
 
     @patch("apps.downloads.views.MutagenFile")
     def test_music_player_page_prefers_structured_audio_metadata(self, mutagen_file):
