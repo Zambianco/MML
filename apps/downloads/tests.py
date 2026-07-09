@@ -825,8 +825,48 @@ class DownloadImportTests(TestCase):
         search_slskd_sources(item)
 
         item.refresh_from_db()
+        self.assertEqual(item.search_attempts, 1)
         self.assertEqual(item.search_query, "Mortemia Frozen 2022")
         self.assertEqual(slskd_request.call_args_list[0].args[2]["searchText"], "Mortemia Frozen 2022")
+
+    @patch("apps.downloads.services.search_slskd_sources")
+    def test_process_round_prioritizes_items_with_fewer_searches(self, search_slskd_sources):
+        processed_items = []
+
+        def capture(item):
+            processed_items.append(item.pk)
+            return []
+
+        search_slskd_sources.side_effect = capture
+        track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=3)
+        item_1 = TrackImportItem.objects.create(
+            track_import=track_import,
+            row_number=1,
+            artists="Artist 1",
+            name="Track 1",
+            search_query="Artist 1 Track 1",
+            search_attempts=2,
+        )
+        item_2 = TrackImportItem.objects.create(
+            track_import=track_import,
+            row_number=2,
+            artists="Artist 2",
+            name="Track 2",
+            search_query="Artist 2 Track 2",
+            search_attempts=0,
+        )
+        item_3 = TrackImportItem.objects.create(
+            track_import=track_import,
+            row_number=3,
+            artists="Artist 3",
+            name="Track 3",
+            search_query="Artist 3 Track 3",
+            search_attempts=1,
+        )
+
+        process_download_round(track_import, limit=3)
+
+        self.assertEqual(processed_items, [item_2.pk, item_3.pk, item_1.pk])
 
     @patch("apps.downloads.services.search_slskd_sources")
     def test_process_round_marks_item_error_when_search_fails(self, search_slskd_sources):

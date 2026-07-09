@@ -54,6 +54,7 @@ class TrackImportItem(models.Model):
     isrc = models.CharField(max_length=12, blank=True)
     search_query = models.CharField(max_length=600)
     search_query_mode = models.CharField(max_length=10, choices=SEARCH_QUERY_MODE_CHOICES, default=SEARCH_QUERY_AUTO)
+    search_attempts = models.PositiveIntegerField(default=0)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
     download_progress = models.PositiveSmallIntegerField(default=0)
     download_path = models.CharField(max_length=1000, blank=True)

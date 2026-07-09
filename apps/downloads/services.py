@@ -178,6 +178,7 @@ def search_slskd_sources(item: TrackImportItem, max_sources: int = MAX_SOURCES_P
     search = _slskd_request("POST", "/api/v0/searches", {"searchText": search_query})
     search_id = search["id"]
     started_at = time.monotonic()
+    item.search_attempts += 1
     item.search_slskd_id = str(search_id)
     item.search_state = "Started"
     item.search_response_count = 0
@@ -186,6 +187,7 @@ def search_slskd_sources(item: TrackImportItem, max_sources: int = MAX_SOURCES_P
     item.last_error = ""
     item.save(
         update_fields=[
+            "search_attempts",
             "search_slskd_id",
             "search_state",
             "search_response_count",
@@ -369,7 +371,7 @@ def process_download_round(track_import: TrackImport, limit: int = 0, should_can
             TrackImportItem.STATUS_SEARCHING,
             TrackImportItem.STATUS_ERROR,
         ]
-    ).order_by("row_number", "id")
+    ).order_by("search_attempts", "row_number", "id")
     if limit > 0:
         items = items[:limit]
 
