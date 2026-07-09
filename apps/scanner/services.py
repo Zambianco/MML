@@ -1,12 +1,10 @@
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 import hashlib
-import json
 import mimetypes
 from pathlib import Path
 import re
 import shutil
-import subprocess
 from uuid import UUID
 
 from django.conf import settings
@@ -15,6 +13,11 @@ from django.utils import timezone
 
 from apps.library.models import Album, Artist, Track
 from apps.mediafiles.models import MediaFile, MonitoredDirectory
+
+try:
+    import acoustid
+except ImportError:  # pragma: no cover - optional dependency during local bootstrap
+    acoustid = None
 
 try:
     from mutagen import File as MutagenFile
@@ -133,6 +136,8 @@ def scan_directory(directory: MonitoredDirectory) -> ScanResult:
                 "sha256": sha256,
                 "duration_ms": metadata.duration_ms,
                 "bitrate_kbps": metadata.bitrate_kbps,
+                "acoustic_fingerprint": metadata.acoustic_fingerprint,
+                "acoustic_fingerprint_hash": metadata.acoustic_fingerprint_hash,
                 "duplicate_confidence": decision.confidence,
                 "duplicate_reason": decision.reason,
                 "needs_review": decision.needs_review,
@@ -238,25 +243,16 @@ def extract_audio_metadata(path: Path) -> TrackMetadata:
 
 
 def calculate_acoustic_fingerprint(path: Path) -> tuple[str, int | None]:
-    try:
-        result = subprocess.run(
-            ["fpcalc", "-json", str(path)],
-            capture_output=True,
-            check=True,
-            text=True,
-            timeout=30,
-        )
-    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+    if acoustid is None:
         return "", None
 
     try:
-        payload = json.loads(result.stdout)
-    except json.JSONDecodeError:
+        duration, fingerprint = acoustid.fingerprint_file(str(path), force_fpcalc=True)
+    except acoustid.FingerprintGenerationError:
         return "", None
 
-    duration = payload.get("duration")
     duration_ms = int(float(duration) * 1000) if duration else None
-    return str(payload.get("fingerprint") or ""), duration_ms
+    return str(fingerprint or ""), duration_ms
 
 
 def hash_identity(value: str) -> str:

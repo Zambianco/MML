@@ -34,6 +34,8 @@ class ScanMediaCommandTests(TestCase):
         self.assertEqual(media_file.size_bytes, 5)
         self.assertIsNotNone(media_file.track)
         self.assertEqual(media_file.sha256, media_file.checksum)
+        self.assertEqual(media_file.track.acoustic_fingerprint, media_file.acoustic_fingerprint)
+        self.assertEqual(media_file.track.acoustic_fingerprint_hash, media_file.acoustic_fingerprint_hash)
 
     def test_scan_links_exact_duplicate_by_sha256(self):
         with TemporaryDirectory() as temp_dir:
@@ -75,6 +77,8 @@ class ScanMediaCommandTests(TestCase):
                 artist_name="Artist",
                 isrc="USABC1234567",
                 duration_ms=180000,
+                acoustic_fingerprint="fp-song",
+                acoustic_fingerprint_hash="hash-song",
             )
             with patch("apps.scanner.services.extract_audio_metadata", return_value=metadata):
                 with override_settings(MUSIC_STORAGE_ROOT=storage_root):
@@ -86,7 +90,7 @@ class ScanMediaCommandTests(TestCase):
         self.assertEqual(duplicate.storage_path, "")
         self.assertEqual(duplicate.import_status, MediaFile.ImportStatus.DUPLICATE)
         self.assertEqual(duplicate.duplicate_confidence, 99)
-        self.assertEqual(duplicate.duplicate_reason, "recording_id")
+        self.assertEqual(duplicate.duplicate_reason, "acoustic_fingerprint")
         self.assertFalse(duplicate.needs_review)
 
     def test_scan_marks_metadata_match_for_review(self):
@@ -112,6 +116,8 @@ class ScanMediaCommandTests(TestCase):
                 artist_name="Iron Maiden",
                 album_title="Fear of the Dark",
                 duration_ms=421000,
+                acoustic_fingerprint="fp-fear-of-the-dark",
+                acoustic_fingerprint_hash="hash-fear-of-the-dark",
             )
             with patch("apps.scanner.services.extract_audio_metadata", return_value=metadata):
                 with override_settings(MUSIC_STORAGE_ROOT=storage_root):

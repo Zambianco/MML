@@ -4,6 +4,7 @@ from tempfile import TemporaryDirectory
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from .models import MediaFile, MonitoredDirectory
 
@@ -60,3 +61,23 @@ class LibraryDashboardTests(TestCase):
             self.assertEqual(b"".join(response.streaming_content), b"audio")
             self.assertEqual(response.headers["Content-Type"], "audio/mpeg")
             self.assertEqual(response.headers["Accept-Ranges"], "bytes")
+
+    def test_media_file_allows_original_backup_metadata(self):
+        directory = MonitoredDirectory.objects.create(name="Local", path="/music")
+        backed_up_at = timezone.now()
+
+        media_file = MediaFile.objects.create(
+            directory=directory,
+            path="/music/library/song.flac",
+            source_path="/imports/song.flac",
+            storage_path="library/song.flac",
+            original_backup_path="s3://archive/song.flac",
+            original_backup_status="confirmed",
+            original_backup_sha256="a" * 64,
+            original_backed_up_at=backed_up_at,
+        )
+
+        self.assertEqual(media_file.original_backup_path, "s3://archive/song.flac")
+        self.assertEqual(media_file.original_backup_status, "confirmed")
+        self.assertEqual(media_file.original_backup_sha256, "a" * 64)
+        self.assertEqual(media_file.original_backed_up_at, backed_up_at)
