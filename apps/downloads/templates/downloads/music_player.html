@@ -533,6 +533,30 @@
         flex-shrink: 0;
     }
 
+    .track-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-shrink: 0;
+    }
+
+    .track-heart {
+        border: none;
+        background: transparent;
+        color: #666;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: 0.15s;
+    }
+
+    .track-heart:hover,
+    .track-heart.is-active {
+        color: #ff564c;
+    }
+
     .track-item.is-active .track-name,
     .track-item:hover .track-name {
         color: #fff;
@@ -743,7 +767,12 @@
                                         <span class="track-artist">{{ file.artist }}{% if file.album %} · {{ file.album }}{% endif %}</span>
                                     </span>
                                 </span>
-                                <span class="track-duration">{{ file.extension|upper }}</span>
+                                <span class="track-actions">
+                                    <button class="track-heart" type="button" aria-label="Favoritar musica">
+                                        <i class="fas fa-heart"></i>
+                                    </button>
+                                    <span class="track-duration">{{ file.extension|upper }}</span>
+                                </span>
                             </button>
                         </li>
                     {% endfor %}
@@ -890,6 +919,13 @@
 
         buttons.forEach((button, index) => {
             button.addEventListener("click", () => selectTrack(index));
+        });
+
+        document.querySelectorAll(".track-heart").forEach((button) => {
+            button.addEventListener("click", (event) => {
+                event.stopPropagation();
+                button.classList.toggle("is-active");
+            });
         });
 
         function randomNextIndex() {
