@@ -1,9 +1,12 @@
+from datetime import datetime
+from datetime import timedelta
 from functools import lru_cache
 import mimetypes
 from pathlib import Path
-from datetime import datetime
 from urllib.parse import urlencode
 
+from celery import current_app
+from celery.states import PENDING, READY_STATES
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
@@ -33,6 +36,7 @@ from .services import (
 from .tasks import process_download_round_task
 
 ITEMS_PER_PAGE = 25
+PROCESSING_STALE_AFTER = timedelta(hours=1)
 LOCAL_COVER_NAMES = ("cover.jpg", "cover.jpeg", "cover.png", "cover.webp", "folder.jpg", "folder.jpeg", "folder.png", "album.jpg", "album.jpeg", "album.png")
 
 
@@ -51,6 +55,61 @@ def _item_page_url(track_import: TrackImport, item: TrackImportItem) -> str:
     if item.row_number > 0:
         page = str(((item.row_number - 1) // ITEMS_PER_PAGE) + 1)
     return _import_detail_url(track_import, page=page)
+
+
+def _mark_processing_finished(track_import: TrackImport, *, error: str = "") -> None:
+    update_fields: list[str] = []
+    if track_import.processing_finished_at is None:
+        track_import.processing_finished_at = timezone.now()
+        update_fields.append("processing_finished_at")
+    if track_import.processing_task_id:
+        track_import.processing_task_id = ""
+        update_fields.append("processing_task_id")
+    if track_import.cancel_requested_at is not None:
+        track_import.cancel_requested_at = None
+        update_fields.append("cancel_requested_at")
+    if track_import.processing_last_error != error:
+        track_import.processing_last_error = error
+        update_fields.append("processing_last_error")
+    if update_fields:
+        track_import.save(update_fields=update_fields)
+
+
+def _refresh_processing_state(track_import: TrackImport) -> None:
+    if not track_import.is_processing:
+        return
+
+    started_at = track_import.processing_started_at or timezone.now()
+    if not track_import.processing_task_id:
+        if timezone.now() - started_at >= PROCESSING_STALE_AFTER:
+            _mark_processing_finished(
+                track_import,
+                error="Rodada anterior liberada por exceder o tempo limite sem tarefa ativa.",
+            )
+        return
+
+    try:
+        task_state = current_app.AsyncResult(track_import.processing_task_id).state
+    except Exception:
+        if timezone.now() - started_at >= PROCESSING_STALE_AFTER:
+            _mark_processing_finished(
+                track_import,
+                error="Rodada anterior liberada por exceder o tempo limite sem resposta do Celery.",
+            )
+        return
+
+    if task_state in READY_STATES:
+        error = ""
+        if task_state != "SUCCESS":
+            error = f"Rodada anterior encerrada com estado {task_state.lower()}."
+        _mark_processing_finished(track_import, error=error)
+        return
+
+    if task_state == PENDING and timezone.now() - started_at >= PROCESSING_STALE_AFTER:
+        _mark_processing_finished(
+            track_import,
+            error="Rodada anterior liberada por exceder o tempo limite sem atividade do worker.",
+        )
 
 
 def _download_roots() -> list[Path]:
@@ -505,6 +564,7 @@ def music_player(request: HttpRequest) -> HttpResponse:
 
 def import_detail(request: HttpRequest, pk: int) -> HttpResponse:
     track_import = get_object_or_404(TrackImport, pk=pk)
+    _refresh_processing_state(track_import)
     return render(
         request,
         "downloads/import_detail.html",
@@ -520,6 +580,7 @@ def import_detail(request: HttpRequest, pk: int) -> HttpResponse:
 
 def import_detail_fragment(request: HttpRequest, pk: int) -> HttpResponse:
     track_import = get_object_or_404(TrackImport, pk=pk)
+    _refresh_processing_state(track_import)
     return render(
         request,
         "downloads/import_detail_fragment.html",
@@ -536,6 +597,7 @@ def import_detail_fragment(request: HttpRequest, pk: int) -> HttpResponse:
 @require_http_methods(["POST"])
 def process_round(request: HttpRequest, pk: int) -> HttpResponse:
     track_import = get_object_or_404(TrackImport, pk=pk)
+    _refresh_processing_state(track_import)
     limit = int(request.POST.get("limit") or 0)
     if track_import.is_processing:
         messages.warning(request, "Ja existe uma rodada em processamento para esta importacao.")
@@ -562,6 +624,7 @@ def process_round(request: HttpRequest, pk: int) -> HttpResponse:
 @require_http_methods(["POST"])
 def cancel_round(request: HttpRequest, pk: int) -> HttpResponse:
     track_import = get_object_or_404(TrackImport, pk=pk)
+    _refresh_processing_state(track_import)
     if not track_import.is_processing:
         messages.info(request, "Nao ha rodada em processamento para cancelar.")
     elif track_import.cancel_requested_at is not None:

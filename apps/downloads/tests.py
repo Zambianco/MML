@@ -1,4 +1,5 @@
 import tempfile
+from datetime import timedelta
 from pathlib import Path
 
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -236,6 +237,30 @@ class DownloadImportTests(TestCase):
         delay.assert_called_once_with(track_import.pk, limit=2)
         track_import.refresh_from_db()
         self.assertEqual(track_import.processing_task_id, "task-1")
+        self.assertTrue(track_import.is_processing)
+
+    @patch("apps.downloads.views.current_app.AsyncResult")
+    @patch("apps.downloads.views.process_download_round_task.delay")
+    def test_process_round_releases_stale_pending_task(self, delay, async_result):
+        delay.return_value.id = "task-2"
+        async_result.return_value.state = "PENDING"
+        track_import = TrackImport.objects.create(
+            source_name="downloads.csv",
+            item_count=2,
+            processing_task_id="task-1",
+            processing_started_at=timezone.now() - timedelta(hours=2),
+        )
+
+        response = self.client.post(
+            reverse("downloads-process-round", args=[track_import.pk]),
+            {"limit": "3"},
+            HTTP_HOST="localhost",
+        )
+
+        self.assertRedirects(response, reverse("downloads-import-detail", args=[track_import.pk]))
+        delay.assert_called_once_with(track_import.pk, limit=3)
+        track_import.refresh_from_db()
+        self.assertEqual(track_import.processing_task_id, "task-2")
         self.assertTrue(track_import.is_processing)
 
     def test_cancel_round_marks_import_for_cancellation(self):
