@@ -615,7 +615,9 @@ def music_player(request: HttpRequest) -> HttpResponse:
     artist = str(request.GET.get("artist") or "")
     album = str(request.GET.get("album") or "")
     files = _filter_downloaded_files(all_files, query=query, extension=extension, root=root, artist=artist, album=album)
-    if not files and not any((query, extension, root, artist, album)):
+    if settings.DEBUG and not any((query, extension, root, artist, album)):
+        files = files + _mock_player_files()
+    elif not files and not any((query, extension, root, artist, album)):
         files = _mock_player_files()
     favorite_paths = _favorite_file_paths(request, files)
     for file in files:

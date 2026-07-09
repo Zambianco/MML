@@ -566,6 +566,22 @@ class DownloadImportTests(TestCase):
         self.assertContains(response, "Glass Horizon")
         self.assertContains(response, "data:audio/wav;base64,")
 
+    def test_music_player_page_appends_mock_tracks_when_debug_is_enabled(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage_root = Path(temp_dir) / "music"
+            nested_dir = storage_root / "nested"
+            nested_dir.mkdir(parents=True)
+            (nested_dir / "track.mp3").write_bytes(b"audio-bytes")
+
+            with override_settings(MUSIC_STORAGE_ROOT=storage_root, SLSKD_DOWNLOADS_DIR=storage_root, DEBUG=True):
+                response = self.client.get(reverse("downloads-player"), HTTP_HOST="localhost")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "nested/track.mp3")
+        self.assertContains(response, "Aurora Drive")
+        self.assertContains(response, "Night Shift")
+        self.assertContains(response, "Glass Horizon")
+
     def test_file_cover_serves_adjacent_artwork(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             storage_root = Path(temp_dir) / "music"

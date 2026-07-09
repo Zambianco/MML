@@ -590,7 +590,7 @@
         color: #eee;
         border: none;
         text-align: left;
-        cursor: grab;
+        cursor: pointer;
     }
 
     .track-row:hover,
@@ -674,6 +674,24 @@
         color: #777;
         font-size: 0.75rem;
         flex-shrink: 0;
+    }
+
+    .track-reorder {
+        border: none;
+        background: transparent;
+        color: #666;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: grab;
+        transition: 0.15s;
+        flex-shrink: 0;
+    }
+
+    .track-reorder:hover,
+    .track-row.is-dragging .track-reorder {
+        color: #ddd;
     }
 
     .track-heart {
@@ -901,7 +919,6 @@
                             <button
                                 class="track-item"
                                 type="button"
-                                draggable="true"
                                 data-index="{{ forloop.counter0 }}"
                                 data-title="{{ file.title }}"
                                 data-artist="{{ file.artist }}"
@@ -926,6 +943,9 @@
                                 </div>
                             </button>
                             <span class="track-duration">{{ file.extension|upper }}</span>
+                            <button class="track-reorder" type="button" draggable="true" aria-label="Reordenar musica">
+                                <i class="fas fa-grip-lines"></i>
+                            </button>
                         </li>
                     {% endfor %}
                 </ul>
@@ -1453,12 +1473,11 @@
             draggedButton = null;
         }
 
-        function moveDraggedTrack(targetButton, clientY) {
-            if (!trackList || !draggedButton || !targetButton || targetButton === draggedButton) {
+        function moveDraggedTrack(targetRow, clientY) {
+            if (!trackList || !draggedButton || !targetRow) {
                 return;
             }
             const draggedRow = draggedButton.closest(".track-row");
-            const targetRow = targetButton.closest(".track-row");
             if (!draggedRow || !targetRow || draggedRow === targetRow) {
                 return;
             }
@@ -1470,20 +1489,34 @@
 
         buttons.forEach((button) => {
             button.addEventListener("click", () => selectTrack(buttons.indexOf(button)));
-            button.addEventListener("dragstart", (event) => {
-                draggedButton = button;
-                button.closest(".track-row")?.classList.add("is-dragging");
-                event.dataTransfer.effectAllowed = "move";
-                event.dataTransfer.setData("text/plain", trackKey(button));
-            });
-            button.addEventListener("dragover", (event) => {
+        });
+
+        document.querySelectorAll(".track-row").forEach((row) => {
+            row.addEventListener("dragover", (event) => {
                 event.preventDefault();
-                moveDraggedTrack(button, event.clientY);
+                moveDraggedTrack(row, event.clientY);
             });
-            button.addEventListener("drop", (event) => {
+            row.addEventListener("drop", (event) => {
                 event.preventDefault();
-                moveDraggedTrack(button, event.clientY);
+                moveDraggedTrack(row, event.clientY);
                 clearDragState();
+            });
+        });
+
+        document.querySelectorAll(".track-reorder").forEach((button) => {
+            button.addEventListener("click", (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+            });
+            button.addEventListener("dragstart", (event) => {
+                const trackButton = button.closest(".track-row")?.querySelector(".track-item");
+                if (!trackButton) {
+                    return;
+                }
+                draggedButton = trackButton;
+                trackButton.closest(".track-row")?.classList.add("is-dragging");
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("text/plain", trackKey(trackButton));
             });
             button.addEventListener("dragend", () => {
                 refreshTrackButtons();
