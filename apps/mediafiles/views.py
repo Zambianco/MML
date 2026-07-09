@@ -11,13 +11,15 @@ from apps.core.audio import stream_audio_file
 from apps.library.models import Album, Artist, Track
 from apps.scanner.services import scan_monitored_directories
 
-from .forms import MonitoredDirectoryForm
-from .models import MediaFile, MonitoredDirectory
+from .forms import BackupTargetForm, MonitoredDirectoryForm
+from .models import BackupTarget, MediaFile, MonitoredDirectory
 
 
 def library_dashboard(request: HttpRequest) -> HttpResponse:
     form = MonitoredDirectoryForm()
+    backup_target_form = BackupTargetForm()
     directories = MonitoredDirectory.objects.all()
+    backup_targets = BackupTarget.objects.all()
     recent_tracks = Track.objects.select_related("artist", "album").annotate(file_count=Count("media_files")).order_by(
         "-updated_at"
     )[:12]
@@ -28,8 +30,11 @@ def library_dashboard(request: HttpRequest) -> HttpResponse:
     ).order_by("-track_count", "name")[:8]
     context = {
         "form": form,
+        "backup_target_form": backup_target_form,
+        "backup_targets": backup_targets,
         "directories": directories,
         "directory_count": directories.count(),
+        "backup_target_count": backup_targets.count(),
         "media_file_count": MediaFile.objects.count(),
         "artist_count": Artist.objects.count(),
         "album_count": Album.objects.count(),
@@ -50,6 +55,17 @@ def create_directory(request: HttpRequest) -> HttpResponse:
         messages.success(request, "Diretorio monitorado cadastrado.")
     else:
         messages.error(request, "Nao foi possivel cadastrar o diretorio. Verifique os campos.")
+    return redirect(reverse("library-dashboard"))
+
+
+@require_POST
+def create_backup_target(request: HttpRequest) -> HttpResponse:
+    form = BackupTargetForm(request.POST)
+    if form.is_valid():
+        form.save()
+        messages.success(request, "Destino de backup cadastrado.")
+    else:
+        messages.error(request, "Nao foi possivel cadastrar o destino de backup. Verifique os campos.")
     return redirect(reverse("library-dashboard"))
 
 

@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from apps.library.models import Album, Artist, Track
-from apps.mediafiles.models import MediaFile, MonitoredDirectory
+from apps.mediafiles.models import BackupTarget, MediaFile, MonitoredDirectory
 
 
 class ArtistSerializer(serializers.ModelSerializer):
@@ -54,6 +54,34 @@ class MonitoredDirectorySerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at", "updated_at"]
 
 
+class BackupTargetSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BackupTarget
+        fields = [
+            "id",
+            "name",
+            "backend_type",
+            "is_active",
+            "is_default",
+            "base_path",
+            "aws_bucket",
+            "aws_region",
+            "aws_access_key_id",
+            "aws_secret_access_key",
+            "aws_endpoint_url",
+            "aws_prefix",
+            "sftp_host",
+            "sftp_port",
+            "sftp_username",
+            "sftp_password",
+            "sftp_private_key",
+            "sftp_remote_path",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
 class MediaFileSerializer(serializers.ModelSerializer):
     directory_name = serializers.CharField(source="directory.name", read_only=True)
     track_title = serializers.CharField(source="track.title", read_only=True)
@@ -66,6 +94,7 @@ class MediaFileSerializer(serializers.ModelSerializer):
             "directory_name",
             "track",
             "track_title",
+            "backup_target",
             "path",
             "source_path",
             "storage_path",

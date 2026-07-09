@@ -2,11 +2,12 @@ from django.http import HttpRequest, JsonResponse
 from rest_framework import viewsets
 
 from apps.library.models import Album, Artist, Track
-from apps.mediafiles.models import MediaFile, MonitoredDirectory
+from apps.mediafiles.models import BackupTarget, MediaFile, MonitoredDirectory
 
 from .serializers import (
     AlbumSerializer,
     ArtistSerializer,
+    BackupTargetSerializer,
     MediaFileSerializer,
     MonitoredDirectorySerializer,
     TrackSerializer,
@@ -24,6 +25,7 @@ def api_index(request: HttpRequest) -> JsonResponse:
                 "albums": request.build_absolute_uri("albums/"),
                 "tracks": request.build_absolute_uri("tracks/"),
                 "directories": request.build_absolute_uri("directories/"),
+                "backup_targets": request.build_absolute_uri("backup-targets/"),
                 "media_files": request.build_absolute_uri("media-files/"),
             },
         }
@@ -52,6 +54,12 @@ class MonitoredDirectoryViewSet(viewsets.ModelViewSet):
     queryset = MonitoredDirectory.objects.all()
     serializer_class = MonitoredDirectorySerializer
     search_fields = ["name", "path"]
+
+
+class BackupTargetViewSet(viewsets.ModelViewSet):
+    queryset = BackupTarget.objects.all()
+    serializer_class = BackupTargetSerializer
+    search_fields = ["name", "backend_type", "aws_bucket", "sftp_host"]
 
 
 class MediaFileViewSet(viewsets.ModelViewSet):

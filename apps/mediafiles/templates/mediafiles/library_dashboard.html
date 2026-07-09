@@ -144,6 +144,91 @@
 
             <div class="card shadow-sm border-0 mt-4">
                 <div class="card-body">
+                    <h2 class="h5 mb-3">Destino de backup</h2>
+                    <form method="post" action="{% url 'create-backup-target' %}" data-backup-form>
+                        {% csrf_token %}
+                        <div class="mb-3">
+                            <label class="form-label" for="{{ backup_target_form.name.id_for_label }}">Nome</label>
+                            {{ backup_target_form.name }}
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="{{ backup_target_form.backend_type.id_for_label }}">Tipo</label>
+                            {{ backup_target_form.backend_type }}
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="{{ backup_target_form.base_path.id_for_label }}">Base do backup</label>
+                            {{ backup_target_form.base_path }}
+                        </div>
+                        <div data-backup-fields="s3">
+                            <div class="mb-3">
+                                <label class="form-label" for="{{ backup_target_form.aws_bucket.id_for_label }}">Bucket</label>
+                                {{ backup_target_form.aws_bucket }}
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label" for="{{ backup_target_form.aws_region.id_for_label }}">Regiao</label>
+                                {{ backup_target_form.aws_region }}
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label" for="{{ backup_target_form.aws_access_key_id.id_for_label }}">Access key</label>
+                                {{ backup_target_form.aws_access_key_id }}
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label" for="{{ backup_target_form.aws_secret_access_key.id_for_label }}">Secret key</label>
+                                {{ backup_target_form.aws_secret_access_key }}
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label" for="{{ backup_target_form.aws_endpoint_url.id_for_label }}">Endpoint URL</label>
+                                {{ backup_target_form.aws_endpoint_url }}
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label" for="{{ backup_target_form.aws_prefix.id_for_label }}">Prefixo</label>
+                                {{ backup_target_form.aws_prefix }}
+                            </div>
+                        </div>
+                        <div data-backup-fields="sftp">
+                            <div class="mb-3">
+                                <label class="form-label" for="{{ backup_target_form.sftp_host.id_for_label }}">Host</label>
+                                {{ backup_target_form.sftp_host }}
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label" for="{{ backup_target_form.sftp_port.id_for_label }}">Porta</label>
+                                {{ backup_target_form.sftp_port }}
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label" for="{{ backup_target_form.sftp_username.id_for_label }}">Usuario</label>
+                                {{ backup_target_form.sftp_username }}
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label" for="{{ backup_target_form.sftp_password.id_for_label }}">Senha</label>
+                                {{ backup_target_form.sftp_password }}
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label" for="{{ backup_target_form.sftp_private_key.id_for_label }}">Chave privada</label>
+                                {{ backup_target_form.sftp_private_key }}
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label" for="{{ backup_target_form.sftp_remote_path.id_for_label }}">Caminho remoto</label>
+                                {{ backup_target_form.sftp_remote_path }}
+                            </div>
+                        </div>
+                        <div class="form-check mb-2">
+                            {{ backup_target_form.is_active }}
+                            <label class="form-check-label" for="{{ backup_target_form.is_active.id_for_label }}">Ativo</label>
+                        </div>
+                        <div class="form-check mb-3">
+                            {{ backup_target_form.is_default }}
+                            <label class="form-check-label" for="{{ backup_target_form.is_default.id_for_label }}">Padrao</label>
+                        </div>
+                        <button class="btn btn-dark w-100" type="submit">Salvar destino</button>
+                    </form>
+                    <div class="small text-secondary mt-3">
+                        {{ backup_target_count }} destino(s) configurado(s)
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm border-0 mt-4">
+                <div class="card-body">
                     <h2 class="h5 mb-3">Importacoes recentes</h2>
                     {% if recent_imports %}
                         <div class="list-group list-group-flush">
@@ -170,6 +255,31 @@
 
             <div class="card shadow-sm border-0 mt-4">
                 <div class="card-body">
+                    <h2 class="h5 mb-3">Destinos de backup</h2>
+                    {% if backup_targets %}
+                        <div class="list-group list-group-flush mb-4">
+                            {% for target in backup_targets %}
+                                <div class="list-group-item px-0">
+                                    <div class="d-flex justify-content-between gap-3">
+                                        <strong>{{ target.name }}</strong>
+                                        <span class="badge text-bg-{% if target.is_active %}success{% else %}secondary{% endif %}">
+                                            {{ target.backend_type|upper }}
+                                        </span>
+                                    </div>
+                                    <div class="text-secondary small">
+                                        {% if target.backend_type == "s3" %}
+                                            {{ target.aws_bucket }}{% if target.aws_prefix %} • {{ target.aws_prefix }}{% endif %}
+                                        {% else %}
+                                            {{ target.sftp_host }}{% if target.sftp_remote_path %} • {{ target.sftp_remote_path }}{% endif %}
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-secondary">Nenhum destino de backup configurado.</p>
+                    {% endif %}
+
                     <h2 class="h5 mb-3">Fontes monitoradas</h2>
                     {% if directories %}
                         <div class="list-group list-group-flush">
@@ -195,4 +305,22 @@
         </section>
     </div>
 </main>
+<script>
+    (() => {
+        const form = document.querySelector("[data-backup-form]");
+        if (!form) {
+            return;
+        }
+        const backend = form.querySelector("[data-backup-backend]");
+        const groups = form.querySelectorAll("[data-backup-fields]");
+        const syncGroups = () => {
+            groups.forEach((group) => {
+                const isActive = group.dataset.backupFields === backend.value;
+                group.hidden = !isActive;
+            });
+        };
+        backend.addEventListener("change", syncGroups);
+        syncGroups();
+    })();
+</script>
 {% endblock %}

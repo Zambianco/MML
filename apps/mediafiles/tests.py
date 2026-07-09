@@ -1,12 +1,15 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import MediaFile, MonitoredDirectory
+from .backup import S3BackupStorage, build_backup_key, calculate_remote_sha256, pending_backup_queryset
+from .models import BackupTarget, MediaFile, MonitoredDirectory
 
 
 class LibraryDashboardTests(TestCase):
@@ -29,6 +32,55 @@ class LibraryDashboardTests(TestCase):
 
         self.assertRedirects(response, reverse("library-dashboard"))
         self.assertTrue(MonitoredDirectory.objects.filter(name="Local", path="/music").exists())
+
+    def test_create_s3_backup_target(self):
+        response = self.client.post(
+            reverse("create-backup-target"),
+            {
+                "name": "AWS",
+                "backend_type": "s3",
+                "is_active": "on",
+                "is_default": "on",
+                "base_path": "flac/",
+                "aws_bucket": "mml-backup",
+                "aws_region": "us-east-1",
+                "aws_access_key_id": "abc",
+                "aws_secret_access_key": "secret",
+                "aws_prefix": "originais/",
+            },
+            HTTP_HOST="localhost",
+        )
+
+        self.assertRedirects(response, reverse("library-dashboard"))
+        self.assertTrue(BackupTarget.objects.filter(name="AWS", backend_type="s3", aws_bucket="mml-backup").exists())
+
+    def test_create_sftp_backup_target_requires_connection_fields(self):
+        response = self.client.post(
+            reverse("create-backup-target"),
+            {
+                "name": "Casa",
+                "backend_type": "sftp",
+                "is_active": "on",
+            },
+            HTTP_HOST="localhost",
+        )
+
+        self.assertRedirects(response, reverse("library-dashboard"))
+        self.assertFalse(BackupTarget.objects.filter(name="Casa").exists())
+
+    def test_build_backup_key_uses_sha256_structure(self):
+        directory = MonitoredDirectory.objects.create(name="Local", path="/music")
+        media_file = MediaFile.objects.create(
+            directory=directory,
+            path="/music/library/song.flac",
+            sha256="ab" + ("c" * 62),
+            audio_format="flac",
+            origin_type=MediaFile.OriginType.ORIGINAL,
+        )
+
+        key = build_backup_key(media_file=media_file, base_path="originais")
+
+        self.assertEqual(key, f"/originais/ab/{media_file.sha256}.flac")
 
     def test_scan_directories_registers_audio_file(self):
         with TemporaryDirectory() as temp_dir:
@@ -65,9 +117,18 @@ class LibraryDashboardTests(TestCase):
     def test_media_file_allows_original_backup_metadata(self):
         directory = MonitoredDirectory.objects.create(name="Local", path="/music")
         backed_up_at = timezone.now()
+        backup_target = BackupTarget.objects.create(
+            name="AWS",
+            backend_type=BackupTarget.BackendType.S3,
+            aws_bucket="mml-backup",
+            aws_region="us-east-1",
+            aws_access_key_id="abc",
+            aws_secret_access_key="secret",
+        )
 
         media_file = MediaFile.objects.create(
             directory=directory,
+            backup_target=backup_target,
             path="/music/library/song.flac",
             source_path="/imports/song.flac",
             storage_path="library/song.flac",
@@ -75,11 +136,12 @@ class LibraryDashboardTests(TestCase):
             origin_type=MediaFile.OriginType.ORIGINAL,
             is_master=True,
             original_backup_path="s3://archive/song.flac",
-            original_backup_status="confirmed",
+            original_backup_status=MediaFile.BackupStatus.CONFIRMED,
             original_backup_sha256="a" * 64,
             original_backed_up_at=backed_up_at,
         )
 
+        self.assertEqual(media_file.backup_target_id, backup_target.id)
         self.assertEqual(media_file.audio_format, "flac")
         self.assertEqual(media_file.origin_type, MediaFile.OriginType.ORIGINAL)
         self.assertTrue(media_file.is_master)
@@ -87,3 +149,128 @@ class LibraryDashboardTests(TestCase):
         self.assertEqual(media_file.original_backup_status, "confirmed")
         self.assertEqual(media_file.original_backup_sha256, "a" * 64)
         self.assertEqual(media_file.original_backed_up_at, backed_up_at)
+
+    def test_pending_backup_queryset_returns_only_unconfirmed_flac_originals(self):
+        directory = MonitoredDirectory.objects.create(name="Local", path="/music")
+        pending = MediaFile.objects.create(
+            directory=directory,
+            path="/music/pending.flac",
+            sha256="1" * 64,
+            audio_format="flac",
+            origin_type=MediaFile.OriginType.ORIGINAL,
+        )
+        MediaFile.objects.create(
+            directory=directory,
+            path="/music/confirmed.flac",
+            sha256="2" * 64,
+            audio_format="flac",
+            origin_type=MediaFile.OriginType.ORIGINAL,
+            original_backup_status=MediaFile.BackupStatus.CONFIRMED,
+        )
+        MediaFile.objects.create(
+            directory=directory,
+            path="/music/derived.opus",
+            sha256="3" * 64,
+            audio_format="opus",
+            origin_type=MediaFile.OriginType.DERIVED,
+        )
+
+        self.assertEqual(list(pending_backup_queryset()), [pending])
+
+    def test_backup_media_command_updates_media_file_status(self):
+        with TemporaryDirectory() as temp_dir:
+            audio_path = Path(temp_dir) / "song.flac"
+            audio_path.write_bytes(b"audio")
+            directory = MonitoredDirectory.objects.create(name="Local", path=temp_dir)
+            target = BackupTarget.objects.create(
+                name="AWS",
+                backend_type=BackupTarget.BackendType.S3,
+                is_default=True,
+                aws_bucket="mml-backup",
+                aws_region="us-east-1",
+                aws_access_key_id="abc",
+                aws_secret_access_key="secret",
+            )
+            media_file = MediaFile.objects.create(
+                directory=directory,
+                path=str(audio_path),
+                source_path=str(audio_path),
+                sha256="a" * 64,
+                audio_format="flac",
+                origin_type=MediaFile.OriginType.ORIGINAL,
+            )
+
+            with patch("apps.mediafiles.management.commands.backup_media.backup_media_file") as backup_mock:
+                backup_mock.side_effect = lambda **kwargs: MediaFile.objects.filter(id=media_file.id).update(
+                    backup_target=target,
+                    original_backup_status=MediaFile.BackupStatus.CONFIRMED,
+                    original_backup_path="s3://mml-backup/flac/song.flac",
+                    original_backup_sha256="a" * 64,
+                )
+                call_command("backup_media", media_file_id=[media_file.id])
+
+        media_file.refresh_from_db()
+        self.assertEqual(media_file.backup_target_id, target.id)
+        self.assertEqual(media_file.original_backup_status, MediaFile.BackupStatus.CONFIRMED)
+
+    def test_s3_backup_verify_checks_metadata_and_size(self):
+        with TemporaryDirectory() as temp_dir:
+            audio_path = Path(temp_dir) / "song.flac"
+            audio_path.write_bytes(b"audio")
+            directory = MonitoredDirectory.objects.create(name="Local", path=temp_dir)
+            target = BackupTarget.objects.create(
+                name="AWS",
+                backend_type=BackupTarget.BackendType.S3,
+                aws_bucket="mml-backup",
+                aws_region="us-east-1",
+                aws_access_key_id="abc",
+                aws_secret_access_key="secret",
+                aws_prefix="originais",
+            )
+            media_file = MediaFile.objects.create(
+                directory=directory,
+                path=str(audio_path),
+                source_path=str(audio_path),
+                sha256="b" * 64,
+                audio_format="flac",
+                origin_type=MediaFile.OriginType.ORIGINAL,
+            )
+            result = type("Result", (), {"storage_path": "s3://mml-backup/originais/file.flac", "sha256": media_file.sha256})()
+
+            with patch("apps.mediafiles.backup.boto3", create=True) as boto3_mock:
+                client = boto3_mock.client.return_value
+                client.head_object.return_value = {
+                    "Metadata": {"sha256": media_file.sha256},
+                    "ContentLength": audio_path.stat().st_size,
+                }
+                storage = S3BackupStorage(target)
+                storage.verify(media_file=media_file, result=result, source_path=audio_path)
+
+        client.head_object.assert_called_once()
+
+    def test_calculate_remote_sha256_reads_remote_file(self):
+        class RemoteFile:
+            def __init__(self, data: bytes):
+                self.data = data
+                self.offset = 0
+
+            def read(self, size: int) -> bytes:
+                chunk = self.data[self.offset : self.offset + size]
+                self.offset += len(chunk)
+                return chunk
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        class FakeSFTP:
+            def open(self, destination: str, mode: str):
+                self.destination = destination
+                self.mode = mode
+                return RemoteFile(b"audio")
+
+        digest = calculate_remote_sha256(sftp=FakeSFTP(), destination="/backup/song.flac")
+
+        self.assertEqual(digest, "6ed8919ce20490a5e3ad8630a4fab69475297abd07db73918dd5f36fcfaeb11b")
