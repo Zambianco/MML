@@ -10,6 +10,7 @@ staticfiles/
 .idea/
 .vscode/
 *.log
+.venv/
 
 # Caso tenha volumes locais salvos dentro da pasta do projeto
 postgres_data/
