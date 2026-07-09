@@ -34,6 +34,9 @@ class ScanMediaCommandTests(TestCase):
         self.assertEqual(media_file.size_bytes, 5)
         self.assertIsNotNone(media_file.track)
         self.assertEqual(media_file.sha256, media_file.checksum)
+        self.assertEqual(media_file.audio_format, "mp3")
+        self.assertEqual(media_file.origin_type, MediaFile.OriginType.ORIGINAL)
+        self.assertTrue(media_file.is_master)
         self.assertEqual(media_file.track.acoustic_fingerprint, media_file.acoustic_fingerprint)
         self.assertEqual(media_file.track.acoustic_fingerprint_hash, media_file.acoustic_fingerprint_hash)
 
@@ -77,8 +80,10 @@ class ScanMediaCommandTests(TestCase):
                 artist_name="Artist",
                 isrc="USABC1234567",
                 duration_ms=180000,
+                audio_format="mp3",
                 acoustic_fingerprint="fp-song",
                 acoustic_fingerprint_hash="hash-song",
+                fingerprint_version="chromaprint",
             )
             with patch("apps.scanner.services.extract_audio_metadata", return_value=metadata):
                 with override_settings(MUSIC_STORAGE_ROOT=storage_root):
@@ -116,8 +121,10 @@ class ScanMediaCommandTests(TestCase):
                 artist_name="Iron Maiden",
                 album_title="Fear of the Dark",
                 duration_ms=421000,
+                audio_format="mp3",
                 acoustic_fingerprint="fp-fear-of-the-dark",
                 acoustic_fingerprint_hash="hash-fear-of-the-dark",
+                fingerprint_version="chromaprint",
             )
             with patch("apps.scanner.services.extract_audio_metadata", return_value=metadata):
                 with override_settings(MUSIC_STORAGE_ROOT=storage_root):

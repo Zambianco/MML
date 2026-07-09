@@ -24,12 +24,19 @@ class MediaFile(models.Model):
         REVIEW = "review", "Review"
         ERROR = "error", "Error"
 
+    class OriginType(models.TextChoices):
+        ORIGINAL = "original", "Original"
+        DERIVED = "derived", "Derived"
+
     directory = models.ForeignKey(MonitoredDirectory, on_delete=models.PROTECT, related_name="media_files")
     track = models.ForeignKey("library.Track", on_delete=models.SET_NULL, related_name="media_files", blank=True, null=True)
     duplicate_of = models.ForeignKey("self", on_delete=models.SET_NULL, related_name="duplicates", blank=True, null=True)
     path = models.TextField(unique=True)
     source_path = models.TextField(blank=True)
     storage_path = models.TextField(blank=True)
+    audio_format = models.CharField(max_length=20, blank=True)
+    origin_type = models.CharField(max_length=20, choices=OriginType.choices, default=OriginType.ORIGINAL)
+    is_master = models.BooleanField(default=True)
     original_backup_path = models.TextField(blank=True)
     original_backup_status = models.CharField(max_length=20, blank=True)
     original_backup_sha256 = models.CharField(max_length=64, blank=True, db_index=True)

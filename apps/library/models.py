@@ -43,6 +43,7 @@ class Track(models.Model):
     isrc = models.CharField(max_length=12, blank=True, db_index=True)
     acoustic_fingerprint = models.TextField(blank=True)
     acoustic_fingerprint_hash = models.CharField(max_length=64, blank=True, db_index=True)
+    fingerprint_version = models.CharField(max_length=40, blank=True)
     musicbrainz_id = models.UUIDField(blank=True, null=True, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

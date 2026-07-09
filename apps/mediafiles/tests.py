@@ -71,12 +71,18 @@ class LibraryDashboardTests(TestCase):
             path="/music/library/song.flac",
             source_path="/imports/song.flac",
             storage_path="library/song.flac",
+            audio_format="flac",
+            origin_type=MediaFile.OriginType.ORIGINAL,
+            is_master=True,
             original_backup_path="s3://archive/song.flac",
             original_backup_status="confirmed",
             original_backup_sha256="a" * 64,
             original_backed_up_at=backed_up_at,
         )
 
+        self.assertEqual(media_file.audio_format, "flac")
+        self.assertEqual(media_file.origin_type, MediaFile.OriginType.ORIGINAL)
+        self.assertTrue(media_file.is_master)
         self.assertEqual(media_file.original_backup_path, "s3://archive/song.flac")
         self.assertEqual(media_file.original_backup_status, "confirmed")
         self.assertEqual(media_file.original_backup_sha256, "a" * 64)

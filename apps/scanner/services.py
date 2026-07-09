@@ -37,6 +37,7 @@ AUDIO_EXTENSIONS = {
     ".wav",
     ".wma",
 }
+FINGERPRINT_VERSION = "chromaprint"
 
 
 @dataclass(frozen=True)
@@ -60,8 +61,10 @@ class TrackMetadata:
     mime_type: str = ""
     isrc: str = ""
     musicbrainz_id: UUID | None = None
+    audio_format: str = ""
     acoustic_fingerprint: str = ""
     acoustic_fingerprint_hash: str = ""
+    fingerprint_version: str = ""
 
 
 @dataclass(frozen=True)
@@ -130,6 +133,9 @@ def scan_directory(directory: MonitoredDirectory) -> ScanResult:
                 "duplicate_of": decision.duplicate_of,
                 "source_path": source_path,
                 "storage_path": storage_path,
+                "audio_format": metadata.audio_format,
+                "origin_type": MediaFile.OriginType.ORIGINAL,
+                "is_master": True,
                 "size_bytes": size_bytes,
                 "mime_type": metadata.mime_type,
                 "checksum": sha256,
@@ -203,8 +209,10 @@ def extract_audio_metadata(path: Path) -> TrackMetadata:
             title=path.stem,
             duration_ms=fingerprint_duration_ms,
             mime_type=mime_type,
+            audio_format=normalize_audio_format(path.suffix),
             acoustic_fingerprint=acoustic_fingerprint,
             acoustic_fingerprint_hash=hash_identity(acoustic_fingerprint),
+            fingerprint_version=FINGERPRINT_VERSION if acoustic_fingerprint else "",
         )
 
     try:
@@ -217,8 +225,10 @@ def extract_audio_metadata(path: Path) -> TrackMetadata:
             title=path.stem,
             duration_ms=fingerprint_duration_ms,
             mime_type=mime_type,
+            audio_format=normalize_audio_format(path.suffix),
             acoustic_fingerprint=acoustic_fingerprint,
             acoustic_fingerprint_hash=hash_identity(acoustic_fingerprint),
+            fingerprint_version=FINGERPRINT_VERSION if acoustic_fingerprint else "",
         )
 
     tags = getattr(audio, "tags", None) or {}
@@ -237,8 +247,10 @@ def extract_audio_metadata(path: Path) -> TrackMetadata:
         mime_type=mime_type,
         isrc=_clean_isrc(_first_tag(tags, "isrc")),
         musicbrainz_id=_parse_uuid(_first_tag(tags, "musicbrainz_trackid", "musicbrainz_releasetrackid")),
+        audio_format=normalize_audio_format(path.suffix),
         acoustic_fingerprint=acoustic_fingerprint,
         acoustic_fingerprint_hash=hash_identity(acoustic_fingerprint),
+        fingerprint_version=FINGERPRINT_VERSION if acoustic_fingerprint else "",
     )
 
 
@@ -311,6 +323,7 @@ def find_or_create_track(*, path: Path, metadata: TrackMetadata) -> Track:
         musicbrainz_id=metadata.musicbrainz_id,
         acoustic_fingerprint=metadata.acoustic_fingerprint,
         acoustic_fingerprint_hash=metadata.acoustic_fingerprint_hash,
+        fingerprint_version=metadata.fingerprint_version,
     )
 
 
@@ -431,3 +444,7 @@ def _parse_uuid(value: str) -> UUID | None:
 
 def _clean_isrc(value: str) -> str:
     return value.replace(" ", "").replace("-", "").upper()[:12]
+
+
+def normalize_audio_format(suffix: str) -> str:
+    return suffix.lower().lstrip(".")
