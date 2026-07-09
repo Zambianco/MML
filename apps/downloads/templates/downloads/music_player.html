@@ -34,18 +34,16 @@
     }
 
     .mobile-playlist-toggle {
-        position: absolute;
-        top: 16px;
-        left: 20px;
         color: #888;
         font-size: 1.2rem;
         cursor: pointer;
         transition: 0.2s;
-        z-index: 5;
         background: none;
         border: none;
-        padding: 8px;
-        display: none;
+        padding: 6px 8px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .mobile-playlist-toggle:hover {
@@ -138,6 +136,10 @@
             conic-gradient(from 120deg, #201716, #d4a373, #4f3429, #15100f, #b4503c, #201716);
         box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
         overflow: hidden;
+    }
+
+    .cover-image.has-cover {
+        background: #141414;
     }
 
     .cover-image img {
@@ -259,13 +261,13 @@
     }
 
     .player-controls {
+        position: relative;
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        gap: clamp(14px, 2.5vw, 30px);
         padding: 8px 0 4px;
         max-width: 500px;
         margin: 0 auto;
+        min-height: 62px;
     }
 
     .ctrl-btn {
@@ -303,10 +305,24 @@
     }
 
     .player-controls-main {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
         display: flex;
         align-items: center;
         justify-content: center;
         gap: clamp(14px, 2.5vw, 30px);
+    }
+
+    .player-controls-extra {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-right: auto;
+    }
+
+    .player-controls > .mobile-playlist-toggle {
+        margin-left: auto;
     }
 
     .extra-btn {
@@ -522,12 +538,23 @@
     }
 
     .track-name {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: start;
+        column-gap: 0.75rem;
         flex: 1;
         margin-left: 2px;
         font-weight: 600;
         font-size: clamp(0.8rem, 0.9vw, 0.9rem);
         color: #eee;
         min-width: 0;
+    }
+
+    .track-name-main {
+        min-width: 0;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
     }
 
     .track-name .highlight {
@@ -547,13 +574,6 @@
         flex-shrink: 0;
     }
 
-    .track-actions {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        flex-shrink: 0;
-    }
-
     .track-heart {
         border: none;
         background: transparent;
@@ -564,6 +584,9 @@
         justify-content: center;
         cursor: pointer;
         transition: 0.15s;
+        flex-shrink: 0;
+        align-self: start;
+        margin-top: 1px;
     }
 
     .track-heart:hover,
@@ -613,12 +636,6 @@
             transform: translateX(0);
         }
 
-        .mobile-playlist-toggle {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-        }
-
         .cover-image {
             min-width: 0;
             min-height: 0;
@@ -629,11 +646,6 @@
         .player-left,
         .player-right {
             padding: 16px;
-        }
-
-        .mobile-playlist-toggle {
-            top: 10px;
-            left: 10px;
         }
 
         .menu-dots {
@@ -658,9 +670,6 @@
 <main class="app-page player-shell">
     <section class="player-container" id="player-container">
         <section class="player-left">
-            <button class="mobile-playlist-toggle" type="button" id="playlist-toggle" aria-label="Abrir lista de musicas">
-                <i class="fas fa-list"></i>
-            </button>
             <button class="menu-dots" type="button" aria-label="Mais opcoes">
                 <i class="fas fa-ellipsis-v"></i>
             </button>
@@ -706,9 +715,14 @@
                 </div>
 
                 <div class="player-controls">
-                    <button class="extra-btn active" type="button" id="shuffle-track" aria-label="Modo aleatorio ativado">
-                        <i class="fas fa-random"></i>
-                    </button>
+                    <div class="player-controls-extra">
+                        <button class="extra-btn" type="button" id="repeat-track" aria-label="Repeticao desativada">
+                            <i class="fas fa-repeat"></i>
+                        </button>
+                        <button class="extra-btn active" type="button" id="shuffle-track" aria-label="Modo aleatorio ativado">
+                            <i class="fas fa-random"></i>
+                        </button>
+                    </div>
                     <div class="player-controls-main">
                         <button class="ctrl-btn" type="button" id="prev-track" aria-label="Faixa anterior">
                             <i class="fas fa-step-backward"></i>
@@ -720,8 +734,8 @@
                             <i class="fas fa-step-forward"></i>
                         </button>
                     </div>
-                    <button class="extra-btn" type="button" id="repeat-track" aria-label="Repeticao desativada">
-                        <i class="fas fa-repeat"></i>
+                    <button class="mobile-playlist-toggle" type="button" id="playlist-toggle" aria-label="Abrir lista de musicas">
+                        <i class="fas fa-list"></i>
                     </button>
                 </div>
             </div>
@@ -774,22 +788,24 @@
                                 data-title="{{ file.title }}"
                                 data-subtitle="{{ file.subtitle }}"
                                 data-path="{{ file.relative_path }}"
+                                data-favorite-path="{{ file.absolute_path }}"
+                                data-favorite="{% if file.is_favorite %}true{% else %}false{% endif %}"
                                 data-src="{{ file.stream_url }}"
                                 data-cover="{{ file.cover_url }}"
                             >
                                 <span class="track-leading">
                                     <span class="track-number">{{ forloop.counter }}</span>
                                     <span class="track-name">
-                                        {{ file.title }}
-                                        <span class="track-artist">{{ file.artist }}{% if file.album %} · {{ file.album }}{% endif %}</span>
+                                        <span class="track-name-main">
+                                            {{ file.title }}
+                                            <span class="track-artist">{{ file.artist }}{% if file.album %} · {{ file.album }}{% endif %}</span>
+                                        </span>
+                                        <button class="track-heart{% if file.is_favorite %} is-active{% endif %}" type="button" aria-label="Favoritar musica" aria-pressed="{% if file.is_favorite %}true{% else %}false{% endif %}">
+                                            <i class="fas fa-heart"></i>
+                                        </button>
                                     </span>
                                 </span>
-                                <span class="track-actions">
-                                    <button class="track-heart" type="button" aria-label="Favoritar musica">
-                                        <i class="fas fa-heart"></i>
-                                    </button>
-                                    <span class="track-duration">{{ file.extension|upper }}</span>
-                                </span>
+                                <span class="track-duration">{{ file.extension|upper }}</span>
                             </button>
                         </li>
                     {% endfor %}
@@ -812,6 +828,7 @@
         const nowTitle = document.getElementById("now-title");
         const nowPath = document.getElementById("now-path");
         const nowCover = document.getElementById("now-cover");
+        const nowCoverFrame = document.querySelector(".cover-image");
         const barTitle = document.getElementById("bar-title");
         const barTitleWrap = document.getElementById("bar-title-wrap");
         const barPath = document.getElementById("bar-path");
@@ -839,13 +856,12 @@
         const progressHandle = document.getElementById("progress-handle");
         const currentTime = document.getElementById("current-time");
         const durationTime = document.getElementById("duration-time");
+        const favoriteToggleUrl = "{% url 'downloads-toggle-favorite' %}";
         let activeIndex = buttons.length ? 0 : -1;
         let shuffleEnabled = true;
         let repeatEnabled = false;
         let isSeeking = false;
         let favoritesOnly = false;
-        const favoritesStorageKey = "mml-player-favorites";
-        const favoritePaths = new Set(JSON.parse(window.localStorage.getItem(favoritesStorageKey) || "[]"));
 
         function formatTime(value) {
             if (!Number.isFinite(value)) {
@@ -894,6 +910,7 @@
                     cover.removeAttribute("src");
                 }
             });
+            nowCoverFrame?.classList.toggle("has-cover", Boolean(coverUrl));
         }
 
         [nowCover, barCover].forEach((cover) => {
@@ -903,6 +920,9 @@
             cover.addEventListener("error", () => {
                 cover.hidden = true;
                 cover.removeAttribute("src");
+                if (cover === nowCover) {
+                    nowCoverFrame?.classList.remove("has-cover");
+                }
             });
         });
 
@@ -915,17 +935,30 @@
             updateProgress();
         }
 
-        function persistFavorites() {
-            window.localStorage.setItem(favoritesStorageKey, JSON.stringify(Array.from(favoritePaths)));
+        function csrfToken() {
+            const cookie = document.cookie
+                .split("; ")
+                .find((item) => item.startsWith("csrftoken="));
+            return cookie ? decodeURIComponent(cookie.split("=")[1]) : "";
         }
 
         function isFavorite(button) {
-            return favoritePaths.has(button.dataset.path);
+            return button?.dataset.favorite === "true";
+        }
+
+        function setFavoriteState(button, favorite) {
+            if (!button) {
+                return;
+            }
+            button.dataset.favorite = favorite ? "true" : "false";
+            syncTrackFavorite(button);
         }
 
         function syncTrackFavorite(button) {
             const heart = button.querySelector(".track-heart");
-            heart?.classList.toggle("is-active", isFavorite(button));
+            const favorite = isFavorite(button);
+            heart?.classList.toggle("is-active", favorite);
+            heart?.setAttribute("aria-pressed", favorite ? "true" : "false");
         }
 
         function syncActiveFavorite() {
@@ -946,20 +979,33 @@
             });
         }
 
-        function toggleFavorite(button) {
+        async function toggleFavorite(button) {
             if (!button) {
                 return;
             }
-            const path = button.dataset.path;
-            if (favoritePaths.has(path)) {
-                favoritePaths.delete(path);
-            } else {
-                favoritePaths.add(path);
+            if (button.dataset.favoritePending === "true") {
+                return;
             }
-            persistFavorites();
-            syncTrackFavorite(button);
-            syncActiveFavorite();
-            applyTrackFilters();
+            button.dataset.favoritePending = "true";
+            try {
+                const response = await fetch(favoriteToggleUrl, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRFToken": csrfToken(),
+                    },
+                    body: JSON.stringify({ path: button.dataset.favoritePath }),
+                });
+                if (!response.ok) {
+                    return;
+                }
+                const payload = await response.json();
+                setFavoriteState(button, Boolean(payload.is_favorite));
+                syncActiveFavorite();
+                applyTrackFilters();
+            } finally {
+                delete button.dataset.favoritePending;
+            }
         }
 
         function selectTrack(index, autoplay = true) {

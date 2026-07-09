@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from datetime import timedelta
 from functools import lru_cache
@@ -11,16 +12,17 @@ from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db.models import Count, Q
-from django.http import FileResponse, HttpRequest, HttpResponse
+from django.http import FileResponse, HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
-from django.views.decorators.http import require_http_methods
+from django.views.decorators.http import require_http_methods, require_POST
 from django.conf import settings
 from django.utils import timezone
 from urllib.error import URLError
 
 from apps.core.audio import stream_audio_file
 from apps.mediafiles.models import MediaFile
+from apps.playback.models import FavoriteTrack
 from apps.scanner.services import AUDIO_EXTENSIONS, MutagenFile
 
 from .forms import TrackImportUploadForm
@@ -145,6 +147,7 @@ def _downloaded_files() -> list[dict]:
         metadata = persisted_metadata.get(str(resolved)) or _read_audio_display_metadata(resolved)
         files.append(
             {
+                "absolute_path": str(resolved),
                 "root": root,
                 "relative_path": relative_path,
                 "name": resolved.name,
@@ -161,6 +164,17 @@ def _downloaded_files() -> list[dict]:
         )
     files.sort(key=lambda item: item["relative_path"].casefold())
     return files
+
+
+def _favorite_file_paths(request: HttpRequest, files: list[dict]) -> set[str]:
+    if not request.user.is_authenticated or not files:
+        return set()
+    return set(
+        FavoriteTrack.objects.filter(
+            user=request.user,
+            file_path__in=[file["absolute_path"] for file in files],
+        ).values_list("file_path", flat=True)
+    )
 
 
 def _filter_downloaded_files(
@@ -543,6 +557,9 @@ def music_player(request: HttpRequest) -> HttpResponse:
     artist = str(request.GET.get("artist") or "")
     album = str(request.GET.get("album") or "")
     files = _filter_downloaded_files(all_files, query=query, extension=extension, root=root, artist=artist, album=album)
+    favorite_paths = _favorite_file_paths(request, files)
+    for file in files:
+        file["is_favorite"] = file["absolute_path"] in favorite_paths
     extensions = sorted({f".{file['name'].rpartition('.')[2].casefold()}" for file in all_files if file["name"].rpartition(".")[2]})
     artists = sorted({file["artist"] for file in all_files if file["artist"]}, key=str.casefold)
     albums = sorted({file["album"] for file in all_files if file["album"]}, key=str.casefold)
@@ -564,6 +581,28 @@ def music_player(request: HttpRequest) -> HttpResponse:
             "selected_root": root,
         },
     )
+
+
+@require_POST
+def toggle_favorite(request: HttpRequest) -> JsonResponse:
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "invalid_payload"}, status=400)
+    requested_path = str(payload.get("path") or "")
+    file_path = _resolve_local_download_path(requested_path)
+    if file_path is None:
+        return JsonResponse({"error": "file_not_found"}, status=404)
+    favorite, created = FavoriteTrack.objects.get_or_create(
+        user=request.user,
+        file_path=str(file_path),
+    )
+    if created:
+        is_favorite = True
+    else:
+        favorite.delete()
+        is_favorite = False
+    return JsonResponse({"is_favorite": is_favorite})
 
 
 def import_detail(request: HttpRequest, pk: int) -> HttpResponse:
