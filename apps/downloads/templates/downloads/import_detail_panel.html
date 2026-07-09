@@ -75,6 +75,7 @@
             <div class="col-sm-3">
                 <label class="form-label small text-secondary" for="round-limit">Limite da rodada</label>
                 <input class="form-control" id="round-limit" type="number" name="limit" min="0" value="5" {% if track_import.is_processing %}disabled{% endif %}>
+                <div class="form-text">Use 0 para manter a rodada continua ate cancelar ou concluir.</div>
             </div>
             <div class="col-sm-auto">
                 <button class="btn btn-dark" type="submit" {% if track_import.is_processing %}disabled{% endif %}>Buscar e enfileirar</button>

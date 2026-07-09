@@ -417,17 +417,17 @@ def update_download_statuses(track_import: TrackImport, enqueue_next: bool = Tru
     return summary
 
 
-def process_download_round(track_import: TrackImport, limit: int = 0, should_cancel: Callable[[], bool] | None = None) -> dict[str, int]:
-    items = track_import.items.filter(
-        status__in=[
-            TrackImportItem.STATUS_PENDING,
-            TrackImportItem.STATUS_SEARCHING,
-            TrackImportItem.STATUS_ERROR,
-        ]
-    ).order_by("search_attempts", "row_number", "id")
-    if limit > 0:
-        items = items[:limit]
+def _round_items_queryset(track_import: TrackImport, *, include_errors: bool = True):
+    statuses = [
+        TrackImportItem.STATUS_PENDING,
+        TrackImportItem.STATUS_SEARCHING,
+    ]
+    if include_errors:
+        statuses.append(TrackImportItem.STATUS_ERROR)
+    return track_import.items.filter(status__in=statuses).order_by("search_attempts", "row_number", "id")
 
+
+def _process_round_items(items, should_cancel: Callable[[], bool] | None = None) -> dict[str, int]:
     summary = {"searched": 0, "queued": 0, "without_source": 0, "cancelled": 0}
     for item in items:
         if should_cancel is not None and should_cancel():
@@ -467,6 +467,36 @@ def process_download_round(track_import: TrackImport, limit: int = 0, should_can
             item.save(update_fields=["status", "last_error", "updated_at"])
             raise
         summary["queued"] += 1
+
+    return summary
+
+
+def process_download_round(track_import: TrackImport, limit: int = 0, should_cancel: Callable[[], bool] | None = None) -> dict[str, int]:
+    if limit > 0:
+        return _process_round_items(_round_items_queryset(track_import)[:limit], should_cancel=should_cancel)
+
+    summary = {"searched": 0, "queued": 0, "without_source": 0, "cancelled": 0}
+    include_errors = True
+    while True:
+        if should_cancel is not None and should_cancel():
+            summary["cancelled"] = 1
+            break
+
+        update_download_statuses(track_import)
+        batch_summary = _process_round_items(
+            list(_round_items_queryset(track_import, include_errors=include_errors)),
+            should_cancel=should_cancel,
+        )
+        include_errors = False
+        for key, value in batch_summary.items():
+            summary[key] += value
+        if batch_summary["cancelled"]:
+            break
+        if batch_summary["searched"] or batch_summary["queued"] or batch_summary["without_source"]:
+            continue
+        if not track_import.items.filter(status=TrackImportItem.STATUS_DOWNLOADING).exists():
+            break
+        time.sleep(SEARCH_STATUS_INTERVAL_SECONDS)
 
     return summary
 

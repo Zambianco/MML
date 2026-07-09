@@ -40,6 +40,7 @@ from .tasks import process_download_round_task
 ITEMS_PER_PAGE = 25
 PROCESSING_STALE_AFTER = timedelta(hours=1)
 LOCAL_COVER_NAMES = ("cover.jpg", "cover.jpeg", "cover.png", "cover.webp", "folder.jpg", "folder.jpeg", "folder.png", "album.jpg", "album.jpeg", "album.png")
+MOCK_AUDIO_DATA_URL = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA="
 
 
 def _import_detail_url(track_import: TrackImport, *, page: str | None = None, querystring: str = "") -> str:
@@ -208,6 +209,63 @@ def _filter_downloaded_files(
             continue
         filtered.append(file)
     return filtered
+
+
+def _mock_player_files() -> list[dict]:
+    now = timezone.now()
+    return [
+        {
+            "absolute_path": "__mock__/aurora-drive.wav",
+            "root": "__mock__",
+            "relative_path": "__mock__/aurora-drive.wav",
+            "name": "aurora-drive.wav",
+            "title": "Aurora Drive",
+            "artist": "Mock Ensemble",
+            "album": "UI Test Sessions",
+            "year": "2026",
+            "subtitle": "Mock Ensemble • UI Test Sessions • 2026",
+            "cover_url": "",
+            "size": 0,
+            "modified_at": now,
+            "extension": "wav",
+            "stream_url": MOCK_AUDIO_DATA_URL,
+            "is_mock": True,
+        },
+        {
+            "absolute_path": "__mock__/night-shift.wav",
+            "root": "__mock__",
+            "relative_path": "__mock__/night-shift.wav",
+            "name": "night-shift.wav",
+            "title": "Night Shift",
+            "artist": "Mock Ensemble",
+            "album": "UI Test Sessions",
+            "year": "2026",
+            "subtitle": "Mock Ensemble • UI Test Sessions • 2026",
+            "cover_url": "",
+            "size": 0,
+            "modified_at": now,
+            "extension": "wav",
+            "stream_url": MOCK_AUDIO_DATA_URL,
+            "is_mock": True,
+        },
+        {
+            "absolute_path": "__mock__/glass-horizon.wav",
+            "root": "__mock__",
+            "relative_path": "__mock__/glass-horizon.wav",
+            "name": "glass-horizon.wav",
+            "title": "Glass Horizon",
+            "artist": "Mock Ensemble",
+            "album": "UI Test Sessions",
+            "year": "2026",
+            "subtitle": "Mock Ensemble • UI Test Sessions • 2026",
+            "cover_url": "",
+            "size": 0,
+            "modified_at": now,
+            "extension": "wav",
+            "stream_url": MOCK_AUDIO_DATA_URL,
+            "is_mock": True,
+        },
+    ]
 
 
 def _persisted_file_metadata(paths: list[Path]) -> dict[str, dict[str, str]]:
@@ -557,9 +615,12 @@ def music_player(request: HttpRequest) -> HttpResponse:
     artist = str(request.GET.get("artist") or "")
     album = str(request.GET.get("album") or "")
     files = _filter_downloaded_files(all_files, query=query, extension=extension, root=root, artist=artist, album=album)
+    if not files and not any((query, extension, root, artist, album)):
+        files = _mock_player_files()
     favorite_paths = _favorite_file_paths(request, files)
     for file in files:
         file["is_favorite"] = file["absolute_path"] in favorite_paths
+        file.setdefault("is_mock", False)
     extensions = sorted({f".{file['name'].rpartition('.')[2].casefold()}" for file in all_files if file["name"].rpartition(".")[2]})
     artists = sorted({file["artist"] for file in all_files if file["artist"]}, key=str.casefold)
     albums = sorted({file["album"] for file in all_files if file["album"]}, key=str.casefold)

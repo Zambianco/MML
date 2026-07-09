@@ -552,6 +552,20 @@ class DownloadImportTests(TestCase):
         self.assertContains(response, reverse("downloads-file-stream"))
         self.assertContains(response, reverse("downloads-file-cover"))
 
+    def test_music_player_page_uses_mock_tracks_when_library_is_empty(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage_root = Path(temp_dir) / "music"
+            storage_root.mkdir(parents=True)
+
+            with override_settings(MUSIC_STORAGE_ROOT=storage_root, SLSKD_DOWNLOADS_DIR=storage_root):
+                response = self.client.get(reverse("downloads-player"), HTTP_HOST="localhost")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Aurora Drive")
+        self.assertContains(response, "Night Shift")
+        self.assertContains(response, "Glass Horizon")
+        self.assertContains(response, "data:audio/wav;base64,")
+
     def test_file_cover_serves_adjacent_artwork(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             storage_root = Path(temp_dir) / "music"
@@ -973,6 +987,43 @@ class DownloadImportTests(TestCase):
 
         item.refresh_from_db()
         self.assertEqual(item.status, TrackImportItem.STATUS_ERROR)
+
+    @patch("apps.downloads.services.update_download_statuses")
+    @patch("apps.downloads.services.enqueue_source")
+    @patch("apps.downloads.services.search_slskd_sources")
+    def test_process_round_with_zero_limit_runs_until_downloads_finish(self, search_slskd_sources, enqueue_source, update_download_statuses):
+        track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
+        item = TrackImportItem.objects.create(
+            track_import=track_import,
+            row_number=1,
+            artists="Elysion",
+            name="Fairytale",
+            search_query="Elysion Fairytale",
+        )
+        source = item.sources.create(rank=1, username="user", remote_filename="fairytale.flac")
+        search_slskd_sources.return_value = [source]
+
+        def fake_enqueue(selected_source):
+            selected_source.item.status = TrackImportItem.STATUS_DOWNLOADING
+            selected_source.item.save(update_fields=["status", "updated_at"])
+
+        def fake_update(_track_import, enqueue_next=True):
+            if update_download_statuses.call_count == 2:
+                item.refresh_from_db()
+                item.status = TrackImportItem.STATUS_DONE
+                item.save(update_fields=["status", "updated_at"])
+            return {"updated": 0, "done": 0, "failed": 0, "queued_next": 0}
+
+        enqueue_source.side_effect = fake_enqueue
+        update_download_statuses.side_effect = fake_update
+
+        summary = process_download_round(track_import, limit=0)
+
+        self.assertEqual(summary, {"searched": 1, "queued": 1, "without_source": 0, "cancelled": 0})
+        self.assertEqual(update_download_statuses.call_count, 2)
+        search_slskd_sources.assert_called_once()
+        item.refresh_from_db()
+        self.assertEqual(item.status, TrackImportItem.STATUS_DONE)
 
     @override_settings(SLSKD_BASE_URL="http://slskd:5030")
     @patch("apps.downloads.services.urlopen")
