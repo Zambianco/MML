@@ -482,7 +482,6 @@ def process_download_round(track_import: TrackImport, limit: int = 0, should_can
             summary["cancelled"] = 1
             break
 
-        update_download_statuses(track_import)
         batch_summary = _process_round_items(
             list(_round_items_queryset(track_import, include_errors=include_errors)),
             should_cancel=should_cancel,
@@ -496,6 +495,11 @@ def process_download_round(track_import: TrackImport, limit: int = 0, should_can
             continue
         if not track_import.items.filter(status=TrackImportItem.STATUS_DOWNLOADING).exists():
             break
+        try:
+            update_download_statuses(track_import)
+        except URLError:
+            time.sleep(SEARCH_STATUS_INTERVAL_SECONDS)
+            continue
         time.sleep(SEARCH_STATUS_INTERVAL_SECONDS)
 
     return summary

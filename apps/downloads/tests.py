@@ -535,6 +535,74 @@ class DownloadImportTests(TestCase):
             self.assertContains(response, "nested/track.flac")
             self.assertNotContains(response, "nested/track.mp3")
 
+    @patch("apps.downloads.views.MutagenFile")
+    def test_download_files_page_filters_tracks_with_missing_metadata(self, mutagen_file):
+        def fake_audio(path, easy=True):
+            tags = (
+                {
+                    "title": ["Complete"],
+                    "artist": ["Artist"],
+                    "album": ["Album"],
+                    "date": ["2024-05-01"],
+                }
+                if Path(path).name == "complete.mp3"
+                else {
+                    "artist": ["Artist"],
+                }
+            )
+            return type("AudioFile", (), {"tags": tags})()
+
+        mutagen_file.side_effect = fake_audio
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage_root = Path(temp_dir) / "music"
+            nested_dir = storage_root / "nested"
+            nested_dir.mkdir(parents=True)
+            (nested_dir / "missing.mp3").write_bytes(b"audio-bytes")
+            (nested_dir / "complete.mp3").write_bytes(b"audio-bytes")
+
+            with override_settings(MUSIC_STORAGE_ROOT=storage_root, SLSKD_DOWNLOADS_DIR=storage_root):
+                response = self.client.get(
+                    reverse("downloads-files"),
+                    {"missing_metadata": "1"},
+                    HTTP_HOST="localhost",
+                )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "nested/missing.mp3")
+        self.assertNotContains(response, "nested/complete.mp3")
+        self.assertContains(response, "Faltando: titulo, album, ano")
+        self.assertContains(response, 'name="missing_metadata" value="1" checked', html=False)
+
+    @patch("apps.downloads.views.MutagenFile")
+    def test_download_files_page_preserves_missing_metadata_validation_with_persisted_track(self, mutagen_file):
+        mutagen_file.return_value.tags = {}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage_root = Path(temp_dir) / "music"
+            nested_dir = storage_root / "nested"
+            nested_dir.mkdir(parents=True)
+            file_path = nested_dir / "track.mp3"
+            file_path.write_bytes(b"audio-bytes")
+
+            artist = Artist.objects.create(name="Epica", sort_name="Epica")
+            album = Album.objects.create(title="The Phantom Agony", artist=artist, release_date="2003-06-05")
+            track = Track.objects.create(title="Sensorium", artist=artist, album=album)
+            directory = MonitoredDirectory.objects.create(name="Library", path=str(storage_root))
+            MediaFile.objects.create(directory=directory, track=track, path=str(file_path.resolve()))
+
+            with override_settings(MUSIC_STORAGE_ROOT=storage_root, SLSKD_DOWNLOADS_DIR=storage_root):
+                response = self.client.get(
+                    reverse("downloads-files"),
+                    {"missing_metadata": "1"},
+                    HTTP_HOST="localhost",
+                )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Sensorium")
+        self.assertContains(response, "Epica")
+        self.assertContains(response, "Faltando: titulo, artista, album, ano")
+
     def test_music_player_page_lists_files_with_stream_urls(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             storage_root = Path(temp_dir) / "music"
@@ -1004,10 +1072,11 @@ class DownloadImportTests(TestCase):
         item.refresh_from_db()
         self.assertEqual(item.status, TrackImportItem.STATUS_ERROR)
 
+    @patch("apps.downloads.services.time.sleep")
     @patch("apps.downloads.services.update_download_statuses")
     @patch("apps.downloads.services.enqueue_source")
     @patch("apps.downloads.services.search_slskd_sources")
-    def test_process_round_with_zero_limit_runs_until_downloads_finish(self, search_slskd_sources, enqueue_source, update_download_statuses):
+    def test_process_round_with_zero_limit_runs_until_downloads_finish(self, search_slskd_sources, enqueue_source, update_download_statuses, _sleep):
         track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
         item = TrackImportItem.objects.create(
             track_import=track_import,
@@ -1038,6 +1107,44 @@ class DownloadImportTests(TestCase):
         self.assertEqual(summary, {"searched": 1, "queued": 1, "without_source": 0, "cancelled": 0})
         self.assertEqual(update_download_statuses.call_count, 2)
         search_slskd_sources.assert_called_once()
+        item.refresh_from_db()
+        self.assertEqual(item.status, TrackImportItem.STATUS_DONE)
+
+    @patch("apps.downloads.services.time.sleep")
+    @patch("apps.downloads.services.update_download_statuses")
+    @patch("apps.downloads.services.enqueue_source")
+    @patch("apps.downloads.services.search_slskd_sources")
+    def test_process_round_with_zero_limit_ignores_transfer_status_connection_error(self, search_slskd_sources, enqueue_source, update_download_statuses, _sleep):
+        track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
+        item = TrackImportItem.objects.create(
+            track_import=track_import,
+            row_number=1,
+            artists="Elysion",
+            name="Fairytale",
+            search_query="Elysion Fairytale",
+        )
+        source = item.sources.create(rank=1, username="user", remote_filename="fairytale.flac")
+        search_slskd_sources.return_value = [source]
+
+        def fake_enqueue(selected_source):
+            selected_source.item.status = TrackImportItem.STATUS_DOWNLOADING
+            selected_source.item.save(update_fields=["status", "updated_at"])
+
+        def fake_update(_track_import, enqueue_next=True):
+            if update_download_statuses.call_count == 1:
+                raise URLError("Connection refused")
+            item.refresh_from_db()
+            item.status = TrackImportItem.STATUS_DONE
+            item.save(update_fields=["status", "updated_at"])
+            return {"updated": 0, "done": 0, "failed": 0, "queued_next": 0}
+
+        enqueue_source.side_effect = fake_enqueue
+        update_download_statuses.side_effect = fake_update
+
+        summary = process_download_round(track_import, limit=0)
+
+        self.assertEqual(summary, {"searched": 1, "queued": 1, "without_source": 0, "cancelled": 0})
+        self.assertEqual(update_download_statuses.call_count, 2)
         item.refresh_from_db()
         self.assertEqual(item.status, TrackImportItem.STATUS_DONE)
 

@@ -145,7 +145,15 @@ def _downloaded_files() -> list[dict]:
     for root, resolved in discovered_files:
         stat = resolved.stat()
         relative_path = resolved.relative_to(root).as_posix()
-        metadata = persisted_metadata.get(str(resolved)) or _read_audio_display_metadata(resolved)
+        is_audio = resolved.suffix.lower() in AUDIO_EXTENSIONS
+        audio_metadata = _read_audio_display_metadata(resolved) if is_audio else {
+            "title": resolved.stem,
+            "artist": "",
+            "album": "",
+            "year": "",
+            "missing_metadata_fields": [],
+        }
+        metadata = persisted_metadata.get(str(resolved)) or audio_metadata
         files.append(
             {
                 "absolute_path": str(resolved),
@@ -157,7 +165,9 @@ def _downloaded_files() -> list[dict]:
                 "album": metadata["album"],
                 "year": metadata["year"],
                 "subtitle": _build_file_subtitle(metadata, relative_path),
-                "cover_url": _build_cover_url(relative_path) if resolved.suffix.lower() in AUDIO_EXTENSIONS else "",
+                "cover_url": _build_cover_url(relative_path) if is_audio else "",
+                "missing_metadata_fields": audio_metadata["missing_metadata_fields"],
+                "has_missing_metadata": bool(audio_metadata["missing_metadata_fields"]),
                 "size": stat.st_size,
                 "modified_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.get_current_timezone()),
                 "stream_url": f"{reverse('downloads-file-stream')}?{urlencode({'path': relative_path})}",
@@ -186,6 +196,7 @@ def _filter_downloaded_files(
     root: str = "",
     artist: str = "",
     album: str = "",
+    missing_metadata: bool = False,
 ) -> list[dict]:
     query = query.strip().casefold()
     extension = extension.strip().casefold()
@@ -206,6 +217,8 @@ def _filter_downloaded_files(
         if artist and file["artist"].casefold() != artist:
             continue
         if album and file["album"].casefold() != album:
+            continue
+        if missing_metadata and not file["has_missing_metadata"]:
             continue
         filtered.append(file)
     return filtered
@@ -304,23 +317,42 @@ def _read_audio_display_metadata(path: Path) -> dict[str, str]:
         "year": "",
     }
     if MutagenFile is None:
-        return fallback
+        return {**fallback, "missing_metadata_fields": ["titulo", "artista", "album", "ano"]}
 
     try:
         audio = MutagenFile(path, easy=True)
     except Exception:
-        return fallback
+        return {**fallback, "missing_metadata_fields": ["titulo", "artista", "album", "ano"]}
 
     tags = getattr(audio, "tags", None) or {}
     if not tags:
-        return fallback
+        return {**fallback, "missing_metadata_fields": ["titulo", "artista", "album", "ano"]}
+
+    title = _first_tag(tags, "title")
+    artist = _first_tag(tags, "artist", "albumartist")
+    album = _first_tag(tags, "album")
+    year = _extract_year(tags)
 
     return {
-        "title": _first_tag(tags, "title") or fallback["title"],
-        "artist": _first_tag(tags, "artist", "albumartist") or fallback["artist"],
-        "album": _first_tag(tags, "album") or fallback["album"],
-        "year": _extract_year(tags),
+        "title": title or fallback["title"],
+        "artist": artist or fallback["artist"],
+        "album": album or fallback["album"],
+        "year": year,
+        "missing_metadata_fields": _missing_metadata_fields(title=title, artist=artist, album=album, year=year),
     }
+
+
+def _missing_metadata_fields(*, title: str, artist: str, album: str, year: str) -> list[str]:
+    missing_fields: list[str] = []
+    if not title:
+        missing_fields.append("titulo")
+    if not artist:
+        missing_fields.append("artista")
+    if not album:
+        missing_fields.append("album")
+    if not year:
+        missing_fields.append("ano")
+    return missing_fields
 
 
 def _first_tag(tags: dict, *names: str) -> str:
@@ -589,7 +621,14 @@ def download_files(request: HttpRequest) -> HttpResponse:
     query = str(request.GET.get("q") or "")
     extension = str(request.GET.get("ext") or "")
     root = str(request.GET.get("root") or "")
-    files = _filter_downloaded_files(all_files, query=query, extension=extension, root=root)
+    missing_metadata = str(request.GET.get("missing_metadata") or "").strip().lower() in {"1", "true", "on"}
+    files = _filter_downloaded_files(
+        all_files,
+        query=query,
+        extension=extension,
+        root=root,
+        missing_metadata=missing_metadata,
+    )
     extensions = sorted({f".{file['name'].rpartition('.')[2].casefold()}" for file in all_files if file["name"].rpartition(".")[2]})
     return render(
         request,
@@ -599,8 +638,10 @@ def download_files(request: HttpRequest) -> HttpResponse:
             "files": files,
             "file_count": len(files),
             "all_file_count": len(all_files),
+            "missing_metadata_count": sum(1 for file in all_files if file["has_missing_metadata"]),
             "extensions": extensions,
             "query": query,
+            "selected_missing_metadata": missing_metadata,
             "selected_extension": extension,
             "selected_root": root,
         },

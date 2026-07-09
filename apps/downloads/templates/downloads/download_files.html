@@ -25,6 +25,8 @@
                     {% if all_file_count != file_count %}
                         <div class="small text-secondary">de {{ all_file_count }} total(is)</div>
                     {% endif %}
+                    <div class="small text-secondary mt-3">Com metadados ausentes</div>
+                    <div class="h4 mb-0">{{ missing_metadata_count }}</div>
                 </div>
             </div>
         </div>
@@ -71,7 +73,13 @@
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-sm-4 col-lg-1 d-grid">
+                <div class="col-sm-6 col-lg-1">
+                    <div class="form-check pt-sm-4 mt-sm-2">
+                        <input class="form-check-input" id="filter-missing-metadata" type="checkbox" name="missing_metadata" value="1" {% if selected_missing_metadata %}checked{% endif %}>
+                        <label class="form-check-label small" for="filter-missing-metadata">Sem metadados</label>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-lg-1 d-grid">
                     <button class="btn btn-dark" type="submit">Filtrar</button>
                 </div>
             </form>
@@ -91,6 +99,7 @@
                             <tr>
                                 <th>Caminho</th>
                                 <th>Arquivo</th>
+                                <th>Metadados</th>
                                 <th>Tamanho</th>
                                 <th>Modificado</th>
                                 <th>Origem</th>
@@ -104,6 +113,17 @@
                                         <audio class="w-100 mt-2" controls preload="none" src="{{ file.stream_url }}"></audio>
                                     </td>
                                     <td class="text-break">{{ file.name }}</td>
+                                    <td class="text-break small">
+                                        <div><strong>Titulo:</strong> {{ file.title }}</div>
+                                        <div><strong>Artista:</strong> {{ file.artist }}</div>
+                                        <div><strong>Album:</strong> {{ file.album }}</div>
+                                        <div><strong>Ano:</strong> {{ file.year|default:"-" }}</div>
+                                        {% if file.has_missing_metadata %}
+                                            <span class="badge text-bg-warning mt-2">Faltando: {{ file.missing_metadata_fields|join:", " }}</span>
+                                        {% else %}
+                                            <span class="badge text-bg-success mt-2">OK</span>
+                                        {% endif %}
+                                    </td>
                                     <td>{{ file.size|filesizeformat }}</td>
                                     <td>{{ file.modified_at|date:"d/m/Y H:i:s" }}</td>
                                     <td class="text-break small text-secondary">{{ file.root }}</td>
