@@ -84,7 +84,7 @@ class SFTPBackupStorage(BaseBackupStorage):
         transport = paramiko.Transport((self.target.sftp_host, self.target.sftp_port or 22))
         try:
             if self.target.sftp_private_key:
-                private_key = paramiko.RSAKey.from_private_key(StringIO(self.target.sftp_private_key))
+                private_key = load_private_key(self.target.sftp_private_key)
                 transport.connect(username=self.target.sftp_username, pkey=private_key)
             else:
                 transport.connect(username=self.target.sftp_username, password=self.target.sftp_password)
@@ -103,7 +103,7 @@ class SFTPBackupStorage(BaseBackupStorage):
         transport = paramiko.Transport((self.target.sftp_host, self.target.sftp_port or 22))
         try:
             if self.target.sftp_private_key:
-                private_key = paramiko.RSAKey.from_private_key(StringIO(self.target.sftp_private_key))
+                private_key = load_private_key(self.target.sftp_private_key)
                 transport.connect(username=self.target.sftp_username, pkey=private_key)
             else:
                 transport.connect(username=self.target.sftp_username, password=self.target.sftp_password)
@@ -230,3 +230,24 @@ def calculate_remote_sha256(*, sftp, destination: str) -> str:
         for chunk in iter(lambda: remote_file.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def load_private_key(private_key_text: str):
+    if paramiko is None:
+        raise BackupError("paramiko nao esta instalado.")
+
+    normalized = private_key_text.replace("\\n", "\n").strip()
+    if not normalized:
+        raise BackupError("Chave privada vazia.")
+
+    key_classes = [getattr(paramiko, name, None) for name in ("Ed25519Key", "ECDSAKey", "RSAKey", "DSSKey")]
+    last_error: Exception | None = None
+    for key_class in key_classes:
+        if key_class is None:
+            continue
+        try:
+            return key_class.from_private_key(StringIO(normalized))
+        except Exception as exc:  # pragma: no cover - depends on key type/runtime
+            last_error = exc
+
+    raise BackupError("Nao foi possivel ler a chave privada SSH. Verifique se ela e uma chave privada valida.") from last_error
