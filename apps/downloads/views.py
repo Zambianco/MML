@@ -366,6 +366,7 @@ def _build_import_filters(request: HttpRequest) -> dict[str, str]:
         "q": str(request.GET.get("q") or "").strip(),
         "status": str(request.GET.get("status") or "").strip(),
         "downloaded": str(request.GET.get("downloaded") or "").strip(),
+        "search_attempts": str(request.GET.get("search_attempts") or "").strip(),
     }
 
 
@@ -375,7 +376,7 @@ def _preserved_import_querystring(request: HttpRequest) -> str:
     return params.urlencode()
 
 
-def _filter_import_items(items, *, query: str = "", status: str = "", downloaded: str = ""):
+def _filter_import_items(items, *, query: str = "", status: str = "", downloaded: str = "", search_attempts: str = ""):
     if query:
         items = items.filter(
             Q(name__icontains=query)
@@ -391,6 +392,8 @@ def _filter_import_items(items, *, query: str = "", status: str = "", downloaded
         items = items.filter(download_path__gt="")
     elif downloaded == "no":
         items = items.filter(download_path="")
+    if search_attempts.isdigit():
+        items = items.filter(search_attempts=int(search_attempts))
     return items
 
 
@@ -463,12 +466,13 @@ def _import_detail_context(
         + status_counts.get(TrackImportItem.STATUS_SEARCHING, 0)
         + status_counts.get(TrackImportItem.STATUS_ERROR, 0)
     )
-    filters = filters or {"q": "", "status": "", "downloaded": ""}
+    filters = filters or {"q": "", "status": "", "downloaded": "", "search_attempts": ""}
     items = _filter_import_items(
         track_import.items.prefetch_related("sources").all(),
         query=filters["q"],
         status=filters["status"],
         downloaded=filters["downloaded"],
+        search_attempts=filters["search_attempts"],
     )
     page_obj = Paginator(items, ITEMS_PER_PAGE).get_page(page)
     query_params = {key: value for key, value in filters.items() if value}

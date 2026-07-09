@@ -173,6 +173,7 @@ class DownloadImportTests(TestCase):
             artists="Elysion",
             name="Fairytale",
             search_query="Elysion Fairytale",
+            search_attempts=2,
             status=TrackImportItem.STATUS_DONE,
             download_path="ready/file.flac",
         )
@@ -182,12 +183,13 @@ class DownloadImportTests(TestCase):
             artists="Xandria",
             name="Now & Forever",
             search_query="Xandria Now Forever",
+            search_attempts=1,
             status=TrackImportItem.STATUS_DOWNLOADING,
         )
 
         response = self.client.get(
             reverse("downloads-import-detail", args=[track_import.pk]),
-            {"q": "Fairytale", "status": "done", "downloaded": "yes"},
+            {"q": "Fairytale", "status": "done", "downloaded": "yes", "search_attempts": "2"},
             HTTP_HOST="localhost",
         )
 
@@ -195,6 +197,8 @@ class DownloadImportTests(TestCase):
         self.assertContains(response, "Fairytale")
         self.assertNotContains(response, "Now & Forever")
         self.assertContains(response, "Com arquivo")
+        self.assertContains(response, 'name="search_attempts"')
+        self.assertContains(response, ">2</td>", html=False)
 
     def test_import_detail_paginates_items(self):
         track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=26)

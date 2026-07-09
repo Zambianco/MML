@@ -121,6 +121,10 @@
                     <option value="no" {% if filters.downloaded == "no" %}selected{% endif %}>Sem arquivo</option>
                 </select>
             </div>
+            <div class="col-sm-4 col-lg-2">
+                <label class="form-label small text-secondary" for="filter-search-attempts">Buscas</label>
+                <input class="form-control" id="filter-search-attempts" type="number" name="search_attempts" min="0" value="{{ filters.search_attempts }}" placeholder="Todas">
+            </div>
             <div class="col-sm-4 col-lg-1 d-grid">
                 <button class="btn btn-dark" type="submit">Filtrar</button>
             </div>
@@ -147,6 +151,7 @@
                         <th>Ano</th>
                         <th>ISRC</th>
                         <th>Query slskd</th>
+                        <th>Tentativas</th>
                         <th>Busca</th>
                         <th>Fontes</th>
                         <th>Download</th>
@@ -176,6 +181,7 @@
                                     </div>
                                 </form>
                             </td>
+                            <td>{{ item.search_attempts }}</td>
                             <td>
                                 {% if item.search_slskd_id %}
                                     <div>{{ item.search_state|default:"-" }}</div>
@@ -252,6 +258,10 @@
                         <div>
                             <div class="text-secondary">ISRC</div>
                             <div>{{ item.isrc|default:"-" }}</div>
+                        </div>
+                        <div>
+                            <div class="text-secondary">Tentativas</div>
+                            <div>{{ item.search_attempts }}</div>
                         </div>
                         <div>
                             <div class="text-secondary">Busca</div>
