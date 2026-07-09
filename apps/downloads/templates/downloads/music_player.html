@@ -18,23 +18,40 @@
     .track-list {
         display: grid;
         gap: 0.55rem;
+        max-height: calc(100vh - 19rem);
+        overflow: auto;
+        padding-right: 0.2rem;
+    }
+
+    .track-list::-webkit-scrollbar {
+        width: 10px;
+    }
+
+    .track-list::-webkit-scrollbar-thumb {
+        background: rgba(212, 163, 115, 0.3);
+        border-radius: 999px;
+        border: 2px solid transparent;
+        background-clip: padding-box;
     }
 
     .track-button {
         width: 100%;
         border: 1px solid var(--app-border);
-        border-radius: 8px;
-        background: rgba(255, 255, 255, 0.03);
+        border-radius: 14px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.02));
         color: var(--app-text-primary);
-        padding: 0.8rem 0.9rem;
+        padding: 0.9rem 1rem;
         text-align: left;
-        transition: border-color 0.15s ease, background 0.15s ease;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+        transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
     }
 
     .track-button:hover,
     .track-button.is-active {
         border-color: rgba(212, 163, 115, 0.55);
-        background: rgba(212, 163, 115, 0.1);
+        background: linear-gradient(180deg, rgba(212, 163, 115, 0.14), rgba(212, 163, 115, 0.08));
+        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
+        transform: translateY(-1px);
     }
 
     .track-title {
@@ -80,7 +97,7 @@
         height: 80px;
         border-radius: 12px;
         flex-shrink: 0;
-        box-shadow: inset 0 0 0 12px rgba(255, 255, 255, 0.08);
+        box-shadow: inset 0 0 0 12px rgba(255, 255, 255, 0.08), 0 10px 20px rgba(0, 0, 0, 0.28);
     }
 
     .cover-art-image {
@@ -106,11 +123,12 @@
     }
 
     .audio-player {
-        background: #fff;
-        color: #1d2733;
+        background: linear-gradient(180deg, rgba(30, 22, 22, 0.98), rgba(24, 18, 18, 0.98));
+        color: var(--app-text-primary);
         border-radius: 20px;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+        box-shadow: var(--app-shadow);
         padding: 1.5rem;
+        border: 1px solid var(--app-border);
     }
 
     .audio-player-track-info {
@@ -129,13 +147,16 @@
         display: inline-block;
         font-size: 1rem;
         font-weight: 700;
-        color: #1d2733;
-        animation: marquee 15s linear infinite;
+        color: var(--app-text-primary);
         padding-right: 2rem;
     }
 
+    .audio-player-title.is-marquee {
+        animation: marquee 15s linear infinite;
+    }
+
     .audio-player-subtitle {
-        color: #6c757d;
+        color: var(--app-text-secondary);
         font-size: 0.92rem;
     }
 
@@ -147,7 +168,7 @@
 
     .audio-progress-bar,
     .volume-slider {
-        background-color: #e9ecef;
+        background-color: rgba(255, 255, 255, 0.12);
         border-radius: 999px;
         position: relative;
         cursor: pointer;
@@ -160,7 +181,7 @@
 
     .audio-progress,
     .volume-level {
-        background-color: #0d6efd;
+        background: linear-gradient(90deg, var(--app-accent), #e8c9a0);
         border-radius: inherit;
     }
 
@@ -173,7 +194,8 @@
     .progress-handle {
         width: 16px;
         height: 16px;
-        background-color: #0d6efd;
+        background-color: var(--app-accent);
+        box-shadow: 0 0 0 4px rgba(212, 163, 115, 0.18);
         border-radius: 50%;
         position: absolute;
         top: 50%;
@@ -189,7 +211,7 @@
     .time-info {
         display: flex;
         justify-content: space-between;
-        color: #6c757d;
+        color: var(--app-text-secondary);
         font-size: 0.875rem;
         font-weight: 500;
         font-variant-numeric: tabular-nums;
@@ -220,17 +242,19 @@
         height: 2.5rem;
         border-radius: 50%;
         border: none;
-        background: transparent;
-        color: #6c757d;
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--app-text-secondary);
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        transition: color 0.2s ease, transform 0.2s ease, background-color 0.2s ease;
+        transition: color 0.2s ease, transform 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
     }
 
     .icon-button:hover,
     .icon-button.is-active {
-        color: #0d6efd;
+        color: var(--app-accent);
+        background: rgba(212, 163, 115, 0.12);
+        box-shadow: inset 0 0 0 1px rgba(212, 163, 115, 0.14);
     }
 
     .play-button {
@@ -238,17 +262,19 @@
         height: 50px;
         border-radius: 50%;
         border: none;
-        background-color: #0d6efd;
-        color: #fff;
+        background: linear-gradient(135deg, var(--app-accent), #e8c9a0);
+        color: var(--app-bg-primary);
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        transition: transform 0.2s ease, background-color 0.2s ease;
+        box-shadow: 0 14px 28px rgba(212, 163, 115, 0.24);
+        transition: transform 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
     }
 
     .play-button:hover {
         transform: scale(1.08);
-        background-color: #0b5ed7;
+        background: #e8c9a0;
+        box-shadow: 0 16px 30px rgba(212, 163, 115, 0.32);
     }
 
     .volume-slider {
@@ -259,6 +285,18 @@
     .volume-level {
         height: 100%;
         width: 70%;
+    }
+
+    .player-summary {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        padding: 0.35rem 0.7rem;
+        border-radius: 999px;
+        background: rgba(212, 163, 115, 0.08);
+        border: 1px solid rgba(212, 163, 115, 0.16);
+        color: var(--app-text-secondary);
+        font-size: 0.82rem;
     }
 
     .native-audio {
@@ -389,7 +427,7 @@
                 <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
                     <h2 class="h5 mb-0">Faixas</h2>
                     {% if all_file_count != file_count %}
-                        <span class="small text-secondary">de {{ all_file_count }} total(is)</span>
+                        <span class="player-summary">Mostrando {{ file_count }} de {{ all_file_count }}</span>
                     {% endif %}
                 </div>
                 {% if files %}
@@ -442,7 +480,7 @@
                     <img class="cover-art-image" id="bar-cover" alt="" {% if files and files.0.cover_url %}src="{{ files.0.cover_url }}"{% else %}hidden{% endif %}>
                 </div>
                 <div class="audio-player-title-wrap">
-                    <div class="marquee">
+                    <div class="marquee" id="bar-title-wrap">
                         <span class="audio-player-title" id="bar-title">{% if files %}{{ files.0.title }}{% else %}Sem faixa selecionada{% endif %}</span>
                     </div>
                     <p class="audio-player-subtitle mb-0 text-break" id="bar-path">{% if files %}{{ files.0.subtitle }}{% else %}Nenhum audio disponivel{% endif %}</p>
@@ -497,6 +535,7 @@
         const nowPath = document.getElementById("now-path");
         const nowCover = document.getElementById("now-cover");
         const barTitle = document.getElementById("bar-title");
+        const barTitleWrap = document.getElementById("bar-title-wrap");
         const barPath = document.getElementById("bar-path");
         const barCover = document.getElementById("bar-cover");
         const previous = document.getElementById("prev-track");
@@ -531,6 +570,14 @@
                 ? '<i class="fas fa-play fa-lg"></i>'
                 : '<i class="fas fa-pause fa-lg"></i>';
             playToggle.setAttribute("aria-label", isPaused ? "Reproduzir" : "Pausar");
+        }
+
+        function syncTitleMarquee() {
+            if (!barTitle || !barTitleWrap) {
+                return;
+            }
+            const shouldAnimate = barTitle.scrollWidth > barTitleWrap.clientWidth;
+            barTitle.classList.toggle("is-marquee", shouldAnimate);
         }
 
         function updateProgress() {
@@ -613,6 +660,7 @@
             barTitle.textContent = button.dataset.title;
             barPath.textContent = button.dataset.subtitle;
             updateCover(button.dataset.cover);
+            syncTitleMarquee();
             currentTime.textContent = "0:00";
             durationTime.textContent = "0:00";
             progressFill.style.width = "0%";
@@ -734,6 +782,7 @@
         player.addEventListener("timeupdate", updateProgress);
         player.addEventListener("loadedmetadata", updateProgress);
         player.addEventListener("volumechange", syncVolumeUi);
+        window.addEventListener("resize", syncTitleMarquee);
 
         player.addEventListener("ended", () => {
             if (buttons.length > 1) {
@@ -752,6 +801,7 @@
         setVolume(0.7);
         updatePlayButton();
         updateProgress();
+        syncTitleMarquee();
     })();
 </script>
 {% endblock %}
