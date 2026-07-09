@@ -58,6 +58,8 @@ class TrackImportItem(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
     download_progress = models.PositiveSmallIntegerField(default=0)
     download_path = models.CharField(max_length=1000, blank=True)
+    download_started_at = models.DateTimeField(blank=True, null=True)
+    download_progress_updated_at = models.DateTimeField(blank=True, null=True)
     search_slskd_id = models.CharField(max_length=120, blank=True)
     search_state = models.CharField(max_length=80, blank=True)
     search_response_count = models.PositiveIntegerField(default=0)

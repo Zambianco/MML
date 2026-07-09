@@ -215,6 +215,9 @@
                                 {% if item.download_path %}
                                     <div class="small text-secondary text-break mt-1">{{ item.download_path }}</div>
                                 {% endif %}
+                                {% if item.download_started_at %}
+                                    <div class="small text-secondary mt-1">Inicio {{ item.download_started_at|date:"d/m/Y H:i" }}</div>
+                                {% endif %}
                                 <form class="mt-2 d-flex gap-2 flex-wrap" method="post" action="{% url 'downloads-item-transfer' track_import.pk item.pk %}{% if querystring %}?{{ querystring }}&page={{ page_obj.number }}{% else %}?page={{ page_obj.number }}{% endif %}">
                                     {% csrf_token %}
                                     <button class="btn btn-dark btn-sm" type="submit">Transferir</button>
@@ -304,6 +307,9 @@
                         </div>
                         {% if item.download_path %}
                             <div class="small text-secondary text-break">{{ item.download_path }}</div>
+                        {% endif %}
+                        {% if item.download_started_at %}
+                            <div class="small text-secondary">Inicio {{ item.download_started_at|date:"d/m/Y H:i" }}</div>
                         {% endif %}
                     </div>
 

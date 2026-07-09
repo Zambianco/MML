@@ -95,6 +95,23 @@
         word-break: break-word;
     }
 
+    .menu-links {
+        display: grid;
+        gap: 0.45rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .menu-link {
+        color: #d7d7d7;
+        text-decoration: none;
+        font-size: 0.82rem;
+        padding: 0.35rem 0;
+    }
+
+    .menu-link:hover {
+        color: #fff;
+    }
+
     .menu-panel .btn {
         width: 100%;
     }
@@ -606,6 +623,12 @@
             </button>
             <div class="menu-panel" id="menu-panel">
                 <div class="menu-user">{{ request.user.get_username }}</div>
+                <div class="menu-links">
+                    <a class="menu-link" href="{% url 'downloads-player' %}">Reproducao</a>
+                    <a class="menu-link" href="{% url 'downloads-files' %}">Arquivos</a>
+                    <a class="menu-link" href="{% url 'downloads-import-list' %}">Importacoes</a>
+                    <a class="menu-link" href="{% url 'library-dashboard' %}">Biblioteca</a>
+                </div>
                 <form method="post" action="{% url 'logout' %}">
                     {% csrf_token %}
                     <button class="btn btn-outline-dark btn-sm" type="submit">Sair</button>

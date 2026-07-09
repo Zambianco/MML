@@ -1,13 +1,10 @@
 from django.http import HttpRequest, HttpResponse, JsonResponse
-from django.shortcuts import render
+from django.shortcuts import redirect, render
+from django.urls import reverse
 
 
 def home(request: HttpRequest) -> HttpResponse:
-    context = {
-        "project_name": "My Music Library",
-        "project_summary": "Base modular para o servidor da sua biblioteca musical.",
-    }
-    return render(request, "core/home.html", context)
+    return redirect(reverse("downloads-player"))
 
 
 def healthcheck(request: HttpRequest) -> JsonResponse:

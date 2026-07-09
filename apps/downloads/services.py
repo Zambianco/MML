@@ -32,6 +32,7 @@ ISRC_PATTERN = re.compile(r"^[A-Z]{2}[A-Z0-9]{3}\d{7}$")
 MAX_SOURCES_PER_ITEM = 10
 SEARCH_STATUS_INTERVAL_SECONDS = 5
 SEARCH_TIMEOUT_SECONDS = 90
+DOWNLOAD_STALE_TIMEOUT = 6 * 60 * 60
 
 
 @dataclass
@@ -245,6 +246,7 @@ def search_slskd_sources(item: TrackImportItem, max_sources: int = MAX_SOURCES_P
 
 
 def enqueue_source(source: TrackImportItemSource) -> None:
+    now = timezone.now()
     payload = [{"filename": source.remote_filename}]
     if source.size_bytes is not None:
         payload[0]["size"] = source.size_bytes
@@ -253,7 +255,20 @@ def enqueue_source(source: TrackImportItemSource) -> None:
     source.item.status = TrackImportItem.STATUS_DOWNLOADING
     source.item.download_progress = 0
     source.item.download_path = source.remote_filename
-    source.item.save(update_fields=["status", "download_progress", "download_path", "updated_at"])
+    source.item.download_started_at = now
+    source.item.download_progress_updated_at = now
+    source.item.last_error = ""
+    source.item.save(
+        update_fields=[
+            "status",
+            "download_progress",
+            "download_path",
+            "download_started_at",
+            "download_progress_updated_at",
+            "last_error",
+            "updated_at",
+        ]
+    )
 
 
 def search_and_enqueue_item(item: TrackImportItem) -> TrackImportItemSource:
@@ -289,6 +304,7 @@ def _download_index() -> dict[tuple[str, str], dict]:
                 filename = str(file_data.get("filename") or "")
                 if username and filename:
                     transfer_data = dict(file_data)
+                    transfer_data["username"] = username
                     if directory_path:
                         transfer_data["_directory_path"] = directory_path
                     index[(username, filename.casefold())] = transfer_data
@@ -304,6 +320,26 @@ def _build_download_path_from_transfer(transfer: dict) -> str:
     if not filename_only:
         return directory_path
     return str(Path(directory_path) / filename_only).replace("\\", "/")
+
+
+def _cancel_download_transfer(transfer: dict) -> bool:
+    username = str(transfer.get("username") or "").strip()
+    transfer_id = transfer.get("id")
+    if not username or transfer_id in (None, ""):
+        return False
+    _slskd_request("DELETE", f"/api/v0/transfers/downloads/{quote(username, safe='')}/{quote(str(transfer_id), safe='')}")
+    return True
+
+
+def _is_stale_download(item: TrackImportItem, status: str, progress: int, now) -> bool:
+    if status != TrackImportItem.STATUS_DOWNLOADING:
+        return False
+    if progress != item.download_progress:
+        return False
+    last_progress_at = item.download_progress_updated_at or item.download_started_at
+    if last_progress_at is None:
+        return False
+    return (now - last_progress_at).total_seconds() >= DOWNLOAD_STALE_TIMEOUT
 
 
 def _slskd_item_status(state: str) -> str:
@@ -332,19 +368,36 @@ def update_download_statuses(track_import: TrackImport, enqueue_next: bool = Tru
         if not transfer:
             continue
 
+        now = timezone.now()
         state = transfer.get("stateDescription") or transfer.get("state") or ""
         status = _slskd_item_status(state)
         progress = int(float(transfer.get("percentComplete") or 0))
+        previous_progress = source.item.download_progress
+        stale_download = _is_stale_download(source.item, status, progress, now)
+
+        if stale_download and _cancel_download_transfer(transfer):
+            status = TrackImportItem.STATUS_ERROR
+            state = f"{state} | stale-cancelled".strip(" |")
+
         source.download_state = str(state)
         source.save(update_fields=["download_state", "updated_at"])
         source.item.status = status
         source.item.download_progress = 100 if status == TrackImportItem.STATUS_DONE else progress
-        update_fields = ["status", "download_progress", "updated_at"]
+        source.item.last_error = ""
+        update_fields = ["status", "download_progress", "last_error", "updated_at"]
+        if status == TrackImportItem.STATUS_DOWNLOADING and progress != previous_progress:
+            source.item.download_progress_updated_at = now
+            update_fields.insert(2, "download_progress_updated_at")
         if status == TrackImportItem.STATUS_DONE:
             resolved_download_path = _build_download_path_from_transfer(transfer)
             if resolved_download_path:
                 source.item.download_path = resolved_download_path
                 update_fields.insert(2, "download_path")
+            source.item.download_progress_updated_at = now
+            if "download_progress_updated_at" not in update_fields:
+                update_fields.insert(2, "download_progress_updated_at")
+        elif status == TrackImportItem.STATUS_ERROR and stale_download:
+            source.item.last_error = "Download interrompido apos 6 horas sem mudanca de progresso."
         source.item.save(update_fields=update_fields)
         summary["updated"] += 1
 

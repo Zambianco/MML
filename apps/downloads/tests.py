@@ -14,7 +14,7 @@ from apps.library.models import Album, Artist, Track
 from apps.mediafiles.models import MediaFile, MonitoredDirectory
 
 from .models import TrackImport, TrackImportItem
-from .services import _slskd_request, build_slskd_search_query, process_download_round, score_slskd_source, search_slskd_sources, update_download_statuses
+from .services import _slskd_request, build_slskd_search_query, enqueue_source, process_download_round, score_slskd_source, search_slskd_sources, update_download_statuses
 
 
 class FakeResponse:
@@ -705,6 +705,89 @@ class DownloadImportTests(TestCase):
         item.refresh_from_db()
         self.assertEqual(item.status, TrackImportItem.STATUS_DONE)
         self.assertEqual(item.download_path, "April Rain (Special Edition) [2009] [Album]/09 - Lost.flac")
+
+    @patch("apps.downloads.services._slskd_request")
+    def test_enqueue_source_sets_download_start_and_progress_timestamps(self, slskd_request):
+        track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
+        item = TrackImportItem.objects.create(
+            track_import=track_import,
+            row_number=1,
+            artists="Delain",
+            name="Lost",
+            search_query="Delain Lost",
+        )
+        source = item.sources.create(rank=1, username="user", remote_filename="09 - Lost.flac")
+
+        enqueue_source(source)
+
+        item.refresh_from_db()
+        self.assertEqual(item.status, TrackImportItem.STATUS_DOWNLOADING)
+        self.assertIsNotNone(item.download_started_at)
+        self.assertIsNotNone(item.download_progress_updated_at)
+
+    @patch("apps.downloads.services._slskd_request")
+    def test_update_download_statuses_cancels_stale_download_and_queues_next_source(self, slskd_request):
+        track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
+        stale_at = timezone.now() - timedelta(hours=7)
+        item = TrackImportItem.objects.create(
+            track_import=track_import,
+            row_number=1,
+            artists="Delain",
+            name="Lost",
+            search_query="Delain Lost",
+            status=TrackImportItem.STATUS_DOWNLOADING,
+            download_progress=35,
+            download_path="09 - Lost.flac",
+            download_started_at=stale_at,
+            download_progress_updated_at=stale_at,
+        )
+        stale_source = item.sources.create(
+            rank=1,
+            username="user",
+            remote_filename="09 - Lost.flac",
+            download_state="InProgress",
+        )
+        stale_source.mark_requested()
+        next_source = item.sources.create(
+            rank=2,
+            username="backup",
+            remote_filename="09 - Lost (alt).flac",
+        )
+        slskd_request.side_effect = [
+            [
+                {
+                    "username": "user",
+                    "directories": [
+                        {
+                            "directory": "Album",
+                            "files": [
+                                {
+                                    "id": "transfer-1",
+                                    "filename": "09 - Lost.flac",
+                                    "state": "InProgress",
+                                    "percentComplete": 35,
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+            None,
+            None,
+        ]
+
+        summary = update_download_statuses(track_import)
+
+        item.refresh_from_db()
+        stale_source.refresh_from_db()
+        next_source.refresh_from_db()
+        self.assertEqual(item.status, TrackImportItem.STATUS_DOWNLOADING)
+        self.assertEqual(item.download_path, "09 - Lost (alt).flac")
+        self.assertEqual(item.last_error, "")
+        self.assertIn("stale-cancelled", stale_source.download_state)
+        self.assertIsNotNone(next_source.download_requested_at)
+        self.assertEqual(summary["failed"], 1)
+        self.assertEqual(summary["queued_next"], 1)
 
     def test_item_query_update_manual(self):
         track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
