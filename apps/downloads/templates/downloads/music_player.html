@@ -122,12 +122,15 @@
         align-items: center;
         justify-content: center;
         min-height: 0;
+        max-height: 100%;
         padding: 10px 0 4px;
     }
 
     .cover-image {
         width: 100%;
         max-width: 450px;
+        min-width: 220px;
+        min-height: 220px;
         aspect-ratio: 1 / 1;
         border-radius: 28px;
         background:
@@ -189,6 +192,12 @@
         transition: 0.15s;
         padding: 4px;
         flex-shrink: 0;
+        opacity: 0.35;
+    }
+
+    .heart-icon:hover,
+    .heart-icon.is-active {
+        opacity: 1;
     }
 
     .heart-icon:hover {
@@ -450,6 +459,11 @@
         text-transform: uppercase;
     }
 
+    .playlist-filter.is-active {
+        color: #fff;
+        border-color: #ff564c;
+    }
+
     .track-list {
         list-style: none;
         overflow-y: auto;
@@ -604,6 +618,11 @@
             align-items: center;
             justify-content: center;
         }
+
+        .cover-image {
+            min-width: 0;
+            min-height: 0;
+        }
     }
 
     @media (max-width: 640px) {
@@ -671,7 +690,7 @@
                     <div class="song-title-wrap" id="bar-title-wrap">
                         <span class="song-title" id="bar-title">{% if files %}{{ files.0.title }}{% else %}Sem faixa selecionada{% endif %}</span>
                     </div>
-                    <i class="fas fa-heart heart-icon" aria-hidden="true"></i>
+                    <i class="fas fa-heart heart-icon" id="bar-favorite" role="button" tabindex="0" aria-label="Favoritar musica"></i>
                 </div>
                 <p class="song-subtitle" id="bar-path">{% if files %}{{ files.0.subtitle }}{% else %}Nenhum audio disponivel{% endif %}</p>
             </div>
@@ -741,9 +760,7 @@
             </div>
 
             <div class="playlist-filters" id="playlist-filters">
-                <button class="playlist-filter" type="button">Ano</button>
-                <button class="playlist-filter" type="button">Artista</button>
-                <button class="playlist-filter" type="button">Estilo</button>
+                <button class="playlist-filter" id="favorites-filter" type="button">Favoritos</button>
             </div>
 
             {% if files %}
@@ -808,6 +825,8 @@
         const playlistSearch = document.getElementById("playlist-search");
         const playlistSearchInput = document.getElementById("playlist-search-input");
         const playlistFilters = document.getElementById("playlist-filters");
+        const favoritesFilter = document.getElementById("favorites-filter");
+        const barFavorite = document.getElementById("bar-favorite");
         const menuToggle = document.querySelector(".menu-dots");
         const menuPanel = document.getElementById("menu-panel");
         const previous = document.getElementById("prev-track");
@@ -824,6 +843,9 @@
         let shuffleEnabled = true;
         let repeatEnabled = false;
         let isSeeking = false;
+        let favoritesOnly = false;
+        const favoritesStorageKey = "mml-player-favorites";
+        const favoritePaths = new Set(JSON.parse(window.localStorage.getItem(favoritesStorageKey) || "[]"));
 
         function formatTime(value) {
             if (!Number.isFinite(value)) {
@@ -893,6 +915,53 @@
             updateProgress();
         }
 
+        function persistFavorites() {
+            window.localStorage.setItem(favoritesStorageKey, JSON.stringify(Array.from(favoritePaths)));
+        }
+
+        function isFavorite(button) {
+            return favoritePaths.has(button.dataset.path);
+        }
+
+        function syncTrackFavorite(button) {
+            const heart = button.querySelector(".track-heart");
+            heart?.classList.toggle("is-active", isFavorite(button));
+        }
+
+        function syncActiveFavorite() {
+            const activeButton = buttons[activeIndex];
+            barFavorite?.classList.toggle("is-active", activeButton ? isFavorite(activeButton) : false);
+            if (barFavorite) {
+                barFavorite.setAttribute("aria-pressed", activeButton && isFavorite(activeButton) ? "true" : "false");
+            }
+        }
+
+        function applyTrackFilters() {
+            const query = playlistSearchInput?.value.trim().toLowerCase() || "";
+            buttons.forEach((button) => {
+                const text = `${button.dataset.title} ${button.dataset.subtitle}`.toLowerCase();
+                const matchesQuery = !query || text.includes(query);
+                const matchesFavorite = !favoritesOnly || isFavorite(button);
+                button.parentElement.hidden = !(matchesQuery && matchesFavorite);
+            });
+        }
+
+        function toggleFavorite(button) {
+            if (!button) {
+                return;
+            }
+            const path = button.dataset.path;
+            if (favoritePaths.has(path)) {
+                favoritePaths.delete(path);
+            } else {
+                favoritePaths.add(path);
+            }
+            persistFavorites();
+            syncTrackFavorite(button);
+            syncActiveFavorite();
+            applyTrackFilters();
+        }
+
         function selectTrack(index, autoplay = true) {
             if (!buttons[index]) {
                 return;
@@ -914,6 +983,7 @@
             if (autoplay) {
                 player.play().catch(() => {});
             }
+            syncActiveFavorite();
             playerContainer.classList.remove("is-playlist-open");
         }
 
@@ -924,7 +994,7 @@
         document.querySelectorAll(".track-heart").forEach((button) => {
             button.addEventListener("click", (event) => {
                 event.stopPropagation();
-                button.classList.toggle("is-active");
+                toggleFavorite(button.closest(".track-item"));
             });
         });
 
@@ -998,9 +1068,7 @@
                 playlistSearchInput.focus();
             } else {
                 playlistSearchInput.value = "";
-                buttons.forEach((button) => {
-                    button.parentElement.hidden = false;
-                });
+                applyTrackFilters();
             }
         });
 
@@ -1009,16 +1077,29 @@
             playlistFilterToggle.classList.toggle("is-active", isOpen);
         });
 
+        favoritesFilter?.addEventListener("click", () => {
+            favoritesOnly = !favoritesOnly;
+            favoritesFilter.classList.toggle("is-active", favoritesOnly);
+            applyTrackFilters();
+        });
+
         menuToggle?.addEventListener("click", () => {
             menuPanel.classList.toggle("is-open");
         });
 
         playlistSearchInput?.addEventListener("input", () => {
-            const query = playlistSearchInput.value.trim().toLowerCase();
-            buttons.forEach((button) => {
-                const text = `${button.dataset.title} ${button.dataset.subtitle}`.toLowerCase();
-                button.parentElement.hidden = query ? !text.includes(query) : false;
-            });
+            applyTrackFilters();
+        });
+
+        barFavorite?.addEventListener("click", () => {
+            toggleFavorite(buttons[activeIndex]);
+        });
+
+        barFavorite?.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                toggleFavorite(buttons[activeIndex]);
+            }
         });
 
         progressBar.addEventListener("click", (event) => {
@@ -1081,7 +1162,9 @@
 
         if (buttons.length) {
             buttons[0].classList.add("is-active");
+            buttons.forEach(syncTrackFavorite);
             updateCover(buttons[0].dataset.cover);
+            syncActiveFavorite();
         } else {
             updateCover("");
         }
