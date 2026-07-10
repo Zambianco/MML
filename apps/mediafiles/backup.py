@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import re
 from io import StringIO
 from pathlib import Path, PurePosixPath
 from urllib.parse import quote
 
 from django.utils import timezone
 
-from .models import BackupTarget, MediaFile
+from .models import BackupControl, BackupTarget, MediaFile
 from .services import cleanup_ready_queryset
 
 try:
@@ -30,6 +31,13 @@ class BackupError(Exception):
 class BackupResult:
     storage_path: str
     sha256: str
+
+
+@dataclass(frozen=True)
+class BackupReconciliationResult:
+    manifest_hash_count: int
+    missing_media_files: list[MediaFile]
+    unavailable_media_files: list[MediaFile]
 
 
 class BaseBackupStorage:
@@ -181,6 +189,82 @@ def pending_backup_queryset():
         origin_type=MediaFile.OriginType.ORIGINAL,
         audio_format="flac",
     ).exclude(original_backup_status=MediaFile.BackupStatus.CONFIRMED)
+
+
+def get_backup_control() -> BackupControl:
+    control, _ = BackupControl.objects.get_or_create(name="default")
+    return control
+
+
+def pause_backup_control() -> BackupControl:
+    control = get_backup_control()
+    control.is_paused = True
+    control.save(update_fields=["is_paused", "updated_at"])
+    return control
+
+
+def resume_backup_control() -> BackupControl:
+    control = get_backup_control()
+    control.is_paused = False
+    control.save(update_fields=["is_paused", "updated_at"])
+    return control
+
+
+def claim_backup_control(*, task_id: str) -> BackupControl:
+    control = get_backup_control()
+    control.is_running = True
+    control.is_paused = False
+    control.active_task_id = task_id
+    control.save(update_fields=["is_running", "is_paused", "active_task_id", "updated_at"])
+    return control
+
+
+def release_backup_control(*, task_id: str) -> BackupControl:
+    control = get_backup_control()
+    if control.active_task_id != task_id:
+        return control
+    control.is_running = False
+    control.active_task_id = ""
+    control.save(update_fields=["is_running", "active_task_id", "updated_at"])
+    return control
+
+
+BACKUP_MANIFEST_HASH_RE = re.compile(r"\b[a-fA-F0-9]{64}\b")
+
+
+def parse_backup_manifest_hashes(manifest_text: str) -> set[str]:
+    return {match.group(0).lower() for match in BACKUP_MANIFEST_HASH_RE.finditer(manifest_text)}
+
+
+def reconcile_backup_manifest(*, manifest_text: str) -> BackupReconciliationResult:
+    manifest_hashes = parse_backup_manifest_hashes(manifest_text)
+    if not manifest_hashes:
+        raise BackupError("Nenhum sha256 valido foi encontrado no manifesto.")
+
+    missing_media_files: list[MediaFile] = []
+    unavailable_media_files: list[MediaFile] = []
+    seen_hashes: set[str] = set()
+    for media_file in (
+        MediaFile.objects.filter(origin_type=MediaFile.OriginType.ORIGINAL, audio_format="flac")
+        .exclude(sha256="")
+        .order_by("discovered_at", "id")
+    ):
+        if media_file.sha256 in seen_hashes:
+            continue
+        seen_hashes.add(media_file.sha256)
+        if media_file.sha256 in manifest_hashes:
+            continue
+        source_path = resolve_media_file_path(media_file)
+        if source_path.is_file():
+            missing_media_files.append(media_file)
+        else:
+            unavailable_media_files.append(media_file)
+
+    return BackupReconciliationResult(
+        manifest_hash_count=len(manifest_hashes),
+        missing_media_files=missing_media_files,
+        unavailable_media_files=unavailable_media_files,
+    )
 
 
 def resolve_media_file_path(media_file: MediaFile) -> Path:

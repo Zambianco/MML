@@ -8,8 +8,8 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from .backup import S3BackupStorage, build_backup_key, calculate_remote_sha256, ensure_sftp_directory, pending_backup_queryset
-from .models import BackupTarget, MediaFile, MonitoredDirectory
+from .backup import S3BackupStorage, build_backup_key, calculate_remote_sha256, ensure_sftp_directory, pending_backup_queryset, reconcile_backup_manifest
+from .models import BackupControl, BackupTarget, MediaFile, MonitoredDirectory
 
 
 class LibraryDashboardTests(TestCase):
@@ -178,6 +178,105 @@ class LibraryDashboardTests(TestCase):
         )
 
         self.assertEqual(list(pending_backup_queryset()), [pending])
+
+    def test_reconcile_backup_manifest_detects_missing_flacs(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            kept_path = root / "kept.flac"
+            kept_path.write_bytes(b"audio")
+            missing_path = root / "missing.flac"
+            missing_path.write_bytes(b"audio")
+            directory = MonitoredDirectory.objects.create(name="Local", path=str(root))
+            kept = MediaFile.objects.create(
+                directory=directory,
+                path=str(kept_path),
+                source_path=str(kept_path),
+                sha256="a" * 64,
+                audio_format="flac",
+                origin_type=MediaFile.OriginType.ORIGINAL,
+            )
+            missing = MediaFile.objects.create(
+                directory=directory,
+                path=str(missing_path),
+                source_path=str(missing_path),
+                sha256="b" * 64,
+                audio_format="flac",
+                origin_type=MediaFile.OriginType.ORIGINAL,
+            )
+
+            result = reconcile_backup_manifest(manifest_text=f"{kept.sha256}\n/backup/{kept.sha256}.flac")
+
+        self.assertEqual(result.manifest_hash_count, 1)
+        self.assertEqual(result.missing_media_files, [missing])
+        self.assertEqual(result.unavailable_media_files, [])
+
+    @patch("apps.mediafiles.views.start_backup_batch")
+    def test_reconcile_backups_queues_missing_files(self, start_backup_batch_mock):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            kept_path = root / "kept.flac"
+            kept_path.write_bytes(b"audio")
+            missing_path = root / "missing.flac"
+            missing_path.write_bytes(b"audio")
+            directory = MonitoredDirectory.objects.create(name="Local", path=str(root))
+            kept = MediaFile.objects.create(
+                directory=directory,
+                path=str(kept_path),
+                source_path=str(kept_path),
+                sha256="c" * 64,
+                audio_format="flac",
+                origin_type=MediaFile.OriginType.ORIGINAL,
+            )
+            missing = MediaFile.objects.create(
+                directory=directory,
+                path=str(missing_path),
+                source_path=str(missing_path),
+                sha256="d" * 64,
+                audio_format="flac",
+                origin_type=MediaFile.OriginType.ORIGINAL,
+            )
+
+            response = self.client.post(
+                reverse("reconcile-backups"),
+                {"manifest_text": f"{kept.sha256}\n/backup/{kept.sha256}.flac"},
+                HTTP_HOST="localhost",
+            )
+
+        self.assertRedirects(response, reverse("library-dashboard"))
+        start_backup_batch_mock.assert_called_once()
+        self.assertEqual(start_backup_batch_mock.call_args.kwargs["media_file_ids"], [missing.id])
+
+    def test_pause_backups_marks_control_paused(self):
+        response = self.client.post(reverse("pause-backups"), HTTP_HOST="localhost")
+
+        self.assertRedirects(response, reverse("library-dashboard"))
+        self.assertTrue(BackupControl.objects.filter(name="default", is_paused=True).exists())
+
+    def test_queue_backups_resumes_a_paused_batch(self):
+        BackupControl.objects.create(name="default", is_running=True, is_paused=True, active_task_id="task-1")
+
+        response = self.client.post(reverse("queue-backups"), HTTP_HOST="localhost")
+
+        self.assertRedirects(response, reverse("library-dashboard"))
+        control = BackupControl.objects.get(name="default")
+        self.assertFalse(control.is_paused)
+        self.assertTrue(control.is_running)
+
+    @patch("apps.mediafiles.views.start_backup_batch")
+    def test_queue_backups_starts_a_single_batch(self, start_backup_batch_mock):
+        directory = MonitoredDirectory.objects.create(name="Local", path="/music")
+        MediaFile.objects.create(
+            directory=directory,
+            path="/music/pending.flac",
+            sha256="1" * 64,
+            audio_format="flac",
+            origin_type=MediaFile.OriginType.ORIGINAL,
+        )
+
+        response = self.client.post(reverse("queue-backups"), HTTP_HOST="localhost")
+
+        self.assertRedirects(response, reverse("library-dashboard"))
+        start_backup_batch_mock.assert_called_once_with()
 
     def test_backup_media_command_updates_media_file_status(self):
         with TemporaryDirectory() as temp_dir:

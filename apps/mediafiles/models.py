@@ -73,6 +73,21 @@ class BackupTarget(models.Model):
             raise ValidationError(errors)
 
 
+class BackupControl(models.Model):
+    name = models.CharField(max_length=120, unique=True, default="default")
+    active_task_id = models.CharField(max_length=120, blank=True)
+    is_running = models.BooleanField(default=False)
+    is_paused = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class MediaFile(models.Model):
     class ImportStatus(models.TextChoices):
         IMPORTED = "imported", "Imported"

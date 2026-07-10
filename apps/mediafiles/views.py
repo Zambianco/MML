@@ -11,11 +11,11 @@ from apps.core.audio import stream_audio_file
 from apps.library.models import Album, Artist, Track
 from apps.scanner.tasks import scan_monitored_directories_task
 
-from .backup import pending_backup_queryset
-from .forms import BackupTargetForm, MonitoredDirectoryForm
+from .backup import get_backup_control, pending_backup_queryset, pause_backup_control, reconcile_backup_manifest, resume_backup_control
+from .forms import BackupReconciliationForm, BackupTargetForm, MonitoredDirectoryForm
 from .models import BackupTarget, MediaFile, MonitoredDirectory
 from .services import cleanup_ready_queryset, preferred_media_file_for_track
-from .tasks import backup_media_file_task, delete_local_flac_task, enqueue_pending_transcodes
+from .tasks import delete_local_flac_task, enqueue_pending_transcodes, start_backup_batch
 
 
 def library_dashboard(request: HttpRequest) -> HttpResponse:
@@ -26,6 +26,8 @@ def library_dashboard(request: HttpRequest) -> HttpResponse:
 
     form = MonitoredDirectoryForm()
     backup_target_form = BackupTargetForm()
+    backup_reconcile_form = BackupReconciliationForm()
+    backup_control = get_backup_control()
     directories = MonitoredDirectory.objects.all()
     backup_targets = BackupTarget.objects.all()
     recent_tracks = Track.objects.select_related("artist", "album").annotate(file_count=Count("media_files")).order_by(
@@ -41,6 +43,8 @@ def library_dashboard(request: HttpRequest) -> HttpResponse:
     context = {
         "form": form,
         "backup_target_form": backup_target_form,
+        "backup_reconcile_form": backup_reconcile_form,
+        "backup_control": backup_control,
         "backup_targets": backup_targets,
         "directories": directories,
         "directory_count": directories.count(),
@@ -100,18 +104,63 @@ def scan_directories(request: HttpRequest) -> HttpResponse:
 
 
 @require_POST
-def queue_backups(request: HttpRequest) -> HttpResponse:
-    queued = 0
-    for media_file in pending_backup_queryset():
-        try:
-            backup_media_file_task.delay(media_file.id)
-            queued += 1
-        except Exception:
-            pass
-    if queued:
-        messages.success(request, f"{queued} backup(s) enviados para o Celery.")
+def reconcile_backups(request: HttpRequest) -> HttpResponse:
+    form = BackupReconciliationForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, "Nao foi possivel ler o manifesto de backup. Verifique o conteudo enviado.")
+        return redirect(reverse("library-dashboard"))
+
+    if get_backup_control().is_running:
+        messages.info(request, "Backup em andamento. Aguarde terminar ou pause antes de reenviar o manifesto.")
+        return redirect(reverse("library-dashboard"))
+
+    try:
+        result = reconcile_backup_manifest(manifest_text=form.cleaned_data["manifest_text"])
+    except Exception:
+        messages.error(request, "Nao foi possivel analisar o manifesto de backup.")
+        return redirect(reverse("library-dashboard"))
+
+    if result.missing_media_files:
+        start_backup_batch(media_file_ids=[media_file.id for media_file in result.missing_media_files])
+        messages.success(request, f"{len(result.missing_media_files)} backup(s) reenviados a partir do manifesto enviado.")
     else:
-        messages.warning(request, "Nenhum backup pendente foi enviado para o Celery.")
+        messages.warning(request, "Nenhum arquivo faltante foi encontrado no manifesto enviado.")
+
+    if result.unavailable_media_files:
+        messages.warning(
+            request,
+            f"{len(result.unavailable_media_files)} arquivo(s) faltante(s) nao estao mais acessiveis localmente e nao puderam ser reenviados.",
+        )
+    return redirect(reverse("library-dashboard"))
+
+
+@require_POST
+def queue_backups(request: HttpRequest) -> HttpResponse:
+    control = get_backup_control()
+    if control.is_running:
+        if control.is_paused:
+            resume_backup_control()
+            messages.success(request, "Backup retomado. O upload atual vai terminar antes de seguir com a proxima faixa.")
+        else:
+            messages.info(request, "Backup ja esta em andamento.")
+        return redirect(reverse("library-dashboard"))
+
+    if not pending_backup_queryset().exists():
+        messages.warning(request, "Nenhum backup pendente foi encontrado.")
+        return redirect(reverse("library-dashboard"))
+
+    start_backup_batch()
+    messages.success(request, "Backup enviado para o Celery.")
+    return redirect(reverse("library-dashboard"))
+
+
+@require_POST
+def pause_backups(request: HttpRequest) -> HttpResponse:
+    control = pause_backup_control()
+    if control.is_running:
+        messages.success(request, "Backup pausado. O upload atual sera concluido antes da pausa entrar em vigor.")
+    else:
+        messages.info(request, "Backup pausado.")
     return redirect(reverse("library-dashboard"))
 
 

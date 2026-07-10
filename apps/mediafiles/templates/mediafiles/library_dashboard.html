@@ -233,6 +233,16 @@
                     <div class="small text-secondary mb-3">
                         Conversao automatica para Opus no scan. Backup e exclusao locais sob ordem do usuario via Celery.
                     </div>
+                    <div class="small mb-3">
+                        {% if backup_control.is_running %}
+                            <span class="badge text-bg-success me-2">Backup em andamento</span>
+                        {% elif backup_control.is_paused %}
+                            <span class="badge text-bg-warning text-dark me-2">Backup pausado</span>
+                        {% else %}
+                            <span class="badge text-bg-light text-dark me-2">Backup parado</span>
+                        {% endif %}
+                        <span class="text-secondary">A pausa entra em vigor depois do upload atual.</span>
+                    </div>
                     <div class="row g-2 mb-3">
                         <div class="col-6">
                             <div class="border rounded p-2 small">Conversao pendente: <strong>{{ transcode_pending_count }}</strong></div>
@@ -262,9 +272,21 @@
                         </div>
                     </div>
                     <div class="d-grid gap-2 mb-3">
+                        <form method="post" action="{% url 'reconcile-backups' %}">
+                            {% csrf_token %}
+                            <div class="mb-2">
+                                <label class="form-label small" for="{{ backup_reconcile_form.manifest_text.id_for_label }}">Manifesto do backup</label>
+                                {{ backup_reconcile_form.manifest_text }}
+                            </div>
+                            <button class="btn btn-outline-primary w-100" type="submit">Reenviar faltantes do manifesto</button>
+                        </form>
                         <form method="post" action="{% url 'queue-backups' %}">
                             {% csrf_token %}
                             <button class="btn btn-dark w-100" type="submit">Realizar backup</button>
+                        </form>
+                        <form method="post" action="{% url 'pause-backups' %}">
+                            {% csrf_token %}
+                            <button class="btn btn-outline-secondary w-100" type="submit">Pausar backup</button>
                         </form>
                         <form method="post" action="{% url 'queue-cleanup' %}">
                             {% csrf_token %}

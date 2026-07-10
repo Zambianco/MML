@@ -3,6 +3,13 @@ from django import forms
 from .models import BackupTarget, MonitoredDirectory
 
 
+class BackupReconciliationForm(forms.Form):
+    manifest_text = forms.CharField(
+        label="Manifesto do backup",
+        widget=forms.Textarea(attrs={"class": "form-control", "rows": 6, "placeholder": "Cole aqui uma lista de caminhos ou sha256, um por linha"}),
+    )
+
+
 class MonitoredDirectoryForm(forms.ModelForm):
     class Meta:
         model = MonitoredDirectory
