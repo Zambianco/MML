@@ -331,12 +331,12 @@ def _cancel_download_transfer(transfer: dict) -> bool:
     return True
 
 
-def _is_stale_download(item: TrackImportItem, status: str, progress: int, now) -> bool:
+def _is_stale_download(item: TrackImportItem, status: str, progress: int, now, fallback_at=None) -> bool:
     if status != TrackImportItem.STATUS_DOWNLOADING:
         return False
     if progress != item.download_progress:
         return False
-    last_progress_at = item.download_progress_updated_at or item.download_started_at
+    last_progress_at = item.download_progress_updated_at or item.download_started_at or fallback_at
     if last_progress_at is None:
         return False
     return (now - last_progress_at).total_seconds() >= DOWNLOAD_STALE_TIMEOUT
@@ -361,26 +361,73 @@ def update_download_statuses(track_import: TrackImport, enqueue_next: bool = Tru
     requested_sources = TrackImportItemSource.objects.filter(
         item__track_import=track_import,
         download_requested_at__isnull=False,
-    ).select_related("item")
+    ).select_related("item").order_by("item_id", "rank", "-score")
+    source_updates: dict[int, list[tuple[TrackImportItemSource, dict | None, str, int, bool]]] = {}
 
     for source in requested_sources:
         transfer = downloads.get((source.username.casefold(), source.remote_filename.casefold()))
-        if not transfer:
-            continue
-
         now = timezone.now()
-        state = transfer.get("stateDescription") or transfer.get("state") or ""
-        status = _slskd_item_status(state)
-        progress = int(float(transfer.get("percentComplete") or 0))
-        previous_progress = source.item.download_progress
-        stale_download = _is_stale_download(source.item, status, progress, now)
-
-        if stale_download and _cancel_download_transfer(transfer):
-            status = TrackImportItem.STATUS_ERROR
-            state = f"{state} | stale-cancelled".strip(" |")
+        if transfer:
+            state = transfer.get("stateDescription") or transfer.get("state") or ""
+            status = _slskd_item_status(state)
+            progress = int(float(transfer.get("percentComplete") or 0))
+            stale_download = _is_stale_download(
+                source.item,
+                status,
+                progress,
+                now,
+                fallback_at=source.download_requested_at,
+            )
+            if stale_download and _cancel_download_transfer(transfer):
+                status = TrackImportItem.STATUS_ERROR
+                state = f"{state} | stale-cancelled".strip(" |")
+        else:
+            state = source.download_state
+            status = _slskd_item_status(state)
+            if status == TrackImportItem.STATUS_DONE:
+                progress = 100
+            elif status == TrackImportItem.STATUS_ERROR:
+                progress = source.item.download_progress
+            else:
+                progress = source.item.download_progress
+                stale_download = _is_stale_download(
+                    source.item,
+                    status,
+                    progress,
+                    now,
+                    fallback_at=source.download_requested_at,
+                )
+                if not stale_download:
+                    continue
+                status = TrackImportItem.STATUS_ERROR
+                state = f"{state} | stale-missing".strip(" |")
+            stale_download = status == TrackImportItem.STATUS_ERROR and "stale-" in state
 
         source.download_state = str(state)
         source.save(update_fields=["download_state", "updated_at"])
+        source_updates.setdefault(source.item_id, []).append((source, transfer, status, progress, stale_download))
+
+    for entries in source_updates.values():
+        done_entry = next((entry for entry in entries if entry[2] == TrackImportItem.STATUS_DONE), None)
+        if done_entry is not None:
+            source, transfer, status, progress, _stale_download = done_entry
+        else:
+            active_entries = [entry for entry in entries if entry[2] == TrackImportItem.STATUS_DOWNLOADING]
+            if active_entries:
+                if active_entries[0][0].item.status == TrackImportItem.STATUS_DONE:
+                    continue
+                source, transfer, status, progress, _stale_download = sorted(
+                    active_entries,
+                    key=lambda entry: (-entry[3], entry[0].rank),
+                )[0]
+            else:
+                source, transfer, status, progress, _stale_download = entries[0]
+
+        if source.item.status == TrackImportItem.STATUS_DONE and status != TrackImportItem.STATUS_DONE:
+            continue
+
+        now = timezone.now()
+        previous_progress = source.item.download_progress
         source.item.status = status
         source.item.download_progress = 100 if status == TrackImportItem.STATUS_DONE else progress
         source.item.last_error = ""
@@ -389,14 +436,14 @@ def update_download_statuses(track_import: TrackImport, enqueue_next: bool = Tru
             source.item.download_progress_updated_at = now
             update_fields.insert(2, "download_progress_updated_at")
         if status == TrackImportItem.STATUS_DONE:
-            resolved_download_path = _build_download_path_from_transfer(transfer)
+            resolved_download_path = _build_download_path_from_transfer(transfer) if transfer else source.remote_filename
             if resolved_download_path:
                 source.item.download_path = resolved_download_path
                 update_fields.insert(2, "download_path")
             source.item.download_progress_updated_at = now
             if "download_progress_updated_at" not in update_fields:
                 update_fields.insert(2, "download_progress_updated_at")
-        elif status == TrackImportItem.STATUS_ERROR and stale_download:
+        elif status == TrackImportItem.STATUS_ERROR and _stale_download:
             source.item.last_error = "Download interrompido apos 6 horas sem mudanca de progresso."
         source.item.save(update_fields=update_fields)
         summary["updated"] += 1

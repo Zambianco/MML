@@ -121,6 +121,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/1")
 CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/2")
+CELERY_TASK_TRACK_STARTED = True
 SLSKD_BASE_URL = os.getenv("SLSKD_BASE_URL", "http://localhost:5030").rstrip("/")
 SLSKD_API_KEY = os.getenv("SLSKD_API_KEY", "12345678901234567890")
 if SLSKD_API_KEY == "change-me":

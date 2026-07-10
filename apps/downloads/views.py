@@ -3,12 +3,15 @@ from datetime import datetime
 from datetime import timedelta
 from functools import lru_cache
 import mimetypes
+from threading import Thread
 from pathlib import Path
 from urllib.parse import urlencode
+from uuid import uuid4
 
 from celery import current_app
 from celery.states import PENDING, READY_STATES
 from django.contrib import messages
+from django.db import close_old_connections
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db.models import Count, Q
@@ -36,10 +39,12 @@ from .services import (
     search_slskd_sources,
     update_download_statuses,
 )
-from .tasks import process_download_round_task
+from .tasks import process_download_round_task, run_process_download_round
 
 ITEMS_PER_PAGE = 25
 PROCESSING_STALE_AFTER = timedelta(hours=1)
+LOCAL_TASK_PREFIX = "local-download-round-"
+LOCAL_PROCESSING_TASKS: set[str] = set()
 LOCAL_COVER_NAMES = ("cover.jpg", "cover.jpeg", "cover.png", "cover.webp", "folder.jpg", "folder.jpeg", "folder.png", "album.jpg", "album.jpeg", "album.png")
 MOCK_AUDIO_DATA_URL = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA="
 
@@ -79,27 +84,73 @@ def _mark_processing_finished(track_import: TrackImport, *, error: str = "") -> 
         track_import.save(update_fields=update_fields)
 
 
+def _celery_workers_available() -> bool:
+    try:
+        replies = current_app.control.inspect(timeout=1).ping() or {}
+    except Exception:
+        return False
+    return bool(replies)
+
+
+def _run_local_process_round(track_import_id: int, limit: int, task_id: str) -> None:
+    LOCAL_PROCESSING_TASKS.add(task_id)
+    close_old_connections()
+    try:
+        run_process_download_round(track_import_id, limit=limit, task_id=task_id)
+    finally:
+        LOCAL_PROCESSING_TASKS.discard(task_id)
+        close_old_connections()
+
+
+def _start_local_process_round(track_import: TrackImport, limit: int) -> None:
+    task_id = f"{LOCAL_TASK_PREFIX}{uuid4().hex}"
+    track_import.processing_task_id = task_id
+    track_import.save(update_fields=["processing_task_id"])
+    thread = Thread(
+        target=_run_local_process_round,
+        args=(track_import.pk, limit, task_id),
+        name=f"download-round-{track_import.pk}",
+        daemon=True,
+    )
+    thread.start()
+
+
+def _start_process_round_background(track_import: TrackImport, limit: int) -> None:
+    if _celery_workers_available():
+        try:
+            task = process_download_round_task.delay(track_import.pk, limit=limit)
+        except Exception:
+            pass
+        else:
+            track_import.processing_task_id = task.id
+            track_import.save(update_fields=["processing_task_id"])
+            return
+    _start_local_process_round(track_import, limit)
+
+
 def _refresh_processing_state(track_import: TrackImport) -> None:
     if not track_import.is_processing:
         return
 
     started_at = track_import.processing_started_at or timezone.now()
-    if not track_import.processing_task_id:
+    task_id = track_import.processing_task_id
+    if not task_id:
         if timezone.now() - started_at >= PROCESSING_STALE_AFTER:
-            _mark_processing_finished(
-                track_import,
-                error="Rodada anterior liberada por exceder o tempo limite sem tarefa ativa.",
-            )
+            _mark_processing_finished(track_import)
+        return
+
+    if task_id.startswith(LOCAL_TASK_PREFIX):
+        if task_id in LOCAL_PROCESSING_TASKS:
+            return
+        if timezone.now() - started_at >= PROCESSING_STALE_AFTER:
+            _mark_processing_finished(track_import)
         return
 
     try:
-        task_state = current_app.AsyncResult(track_import.processing_task_id).state
+        task_state = current_app.AsyncResult(task_id).state
     except Exception:
         if timezone.now() - started_at >= PROCESSING_STALE_AFTER:
-            _mark_processing_finished(
-                track_import,
-                error="Rodada anterior liberada por exceder o tempo limite sem resposta do Celery.",
-            )
+            _mark_processing_finished(track_import)
         return
 
     if task_state in READY_STATES:
@@ -109,11 +160,8 @@ def _refresh_processing_state(track_import: TrackImport) -> None:
         _mark_processing_finished(track_import, error=error)
         return
 
-    if task_state == PENDING and timezone.now() - started_at >= PROCESSING_STALE_AFTER:
-        _mark_processing_finished(
-            track_import,
-            error="Rodada anterior liberada por exceder o tempo limite sem atividade do worker.",
-        )
+    if task_state == PENDING and timezone.now() - started_at >= PROCESSING_STALE_AFTER and not _celery_workers_available():
+        _mark_processing_finished(track_import)
 
 
 def _download_roots() -> list[Path]:
@@ -766,9 +814,7 @@ def process_round(request: HttpRequest, pk: int) -> HttpResponse:
                 "processing_last_error",
             ]
         )
-        task = process_download_round_task.delay(track_import.pk, limit=limit)
-        track_import.processing_task_id = task.id
-        track_import.save(update_fields=["processing_task_id"])
+        _start_process_round_background(track_import, limit)
         messages.success(request, "Rodada enviada para processamento em background.")
     return redirect(_import_detail_url(track_import, page=request.GET.get("page"), querystring=_preserved_import_querystring(request)))
 

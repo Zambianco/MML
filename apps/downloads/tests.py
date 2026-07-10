@@ -226,8 +226,9 @@ class DownloadImportTests(TestCase):
         self.assertContains(response, "Track 26")
         self.assertNotContains(response, "Track 01")
 
+    @patch("apps.downloads.views._celery_workers_available", return_value=True)
     @patch("apps.downloads.views.process_download_round_task.delay")
-    def test_process_round_uses_limit(self, delay):
+    def test_process_round_uses_limit(self, delay, _workers_available):
         delay.return_value.id = "task-1"
         track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=2)
 
@@ -243,17 +244,24 @@ class DownloadImportTests(TestCase):
         self.assertEqual(track_import.processing_task_id, "task-1")
         self.assertTrue(track_import.is_processing)
 
+    @patch("apps.downloads.views._celery_workers_available", return_value=False)
+    @patch("apps.downloads.views._start_local_process_round")
     @patch("apps.downloads.views.current_app.AsyncResult")
-    @patch("apps.downloads.views.process_download_round_task.delay")
-    def test_process_round_releases_stale_pending_task(self, delay, async_result):
-        delay.return_value.id = "task-2"
+    def test_process_round_releases_stale_pending_task_without_worker(self, async_result, start_local, _workers_available):
         async_result.return_value.state = "PENDING"
         track_import = TrackImport.objects.create(
             source_name="downloads.csv",
             item_count=2,
             processing_task_id="task-1",
             processing_started_at=timezone.now() - timedelta(hours=2),
+            processing_last_error="erro antigo",
         )
+
+        def fake_start(selected_import, limit):
+            selected_import.processing_task_id = "local-task"
+            selected_import.save(update_fields=["processing_task_id"])
+
+        start_local.side_effect = fake_start
 
         response = self.client.post(
             reverse("downloads-process-round", args=[track_import.pk]),
@@ -262,9 +270,11 @@ class DownloadImportTests(TestCase):
         )
 
         self.assertRedirects(response, reverse("downloads-import-detail", args=[track_import.pk]))
-        delay.assert_called_once_with(track_import.pk, limit=3)
+        start_local.assert_called_once()
+        self.assertEqual(start_local.call_args.args[1], 3)
         track_import.refresh_from_db()
-        self.assertEqual(track_import.processing_task_id, "task-2")
+        self.assertEqual(track_import.processing_task_id, "local-task")
+        self.assertEqual(track_import.processing_last_error, "")
         self.assertTrue(track_import.is_processing)
 
     def test_cancel_round_marks_import_for_cancellation(self):
@@ -803,6 +813,88 @@ class DownloadImportTests(TestCase):
         item.refresh_from_db()
         self.assertEqual(item.status, TrackImportItem.STATUS_DONE)
         self.assertEqual(item.download_path, "April Rain (Special Edition) [2009] [Album]/09 - Lost.flac")
+
+    @patch("apps.downloads.services._slskd_request")
+    def test_update_download_statuses_keeps_completed_source_done(self, slskd_request):
+        track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
+        item = TrackImportItem.objects.create(
+            track_import=track_import,
+            row_number=1,
+            artists="Delain",
+            name="Lost",
+            search_query="Delain Lost",
+            status=TrackImportItem.STATUS_DOWNLOADING,
+            download_path="alt.flac",
+        )
+        completed_source = item.sources.create(rank=1, username="winner", remote_filename="song.flac")
+        completed_source.mark_requested()
+        queued_source = item.sources.create(rank=2, username="queued", remote_filename="alt.flac")
+        queued_source.mark_requested()
+        slskd_request.return_value = [
+            {
+                "username": "winner",
+                "directories": [
+                    {
+                        "directory": "Album",
+                        "files": [
+                            {
+                                "filename": "song.flac",
+                                "state": "Completed, Succeeded",
+                                "percentComplete": 100,
+                            }
+                        ],
+                    }
+                ],
+            },
+            {
+                "username": "queued",
+                "directories": [
+                    {
+                        "directory": "Album",
+                        "files": [
+                            {
+                                "filename": "alt.flac",
+                                "state": "Queued, Remotely",
+                                "percentComplete": 0,
+                            }
+                        ],
+                    }
+                ],
+            },
+        ]
+
+        summary = update_download_statuses(track_import, enqueue_next=False)
+
+        item.refresh_from_db()
+        self.assertEqual(item.status, TrackImportItem.STATUS_DONE)
+        self.assertEqual(item.download_progress, 100)
+        self.assertEqual(item.download_path, "Album/song.flac")
+        self.assertEqual(summary["done"], 1)
+
+    @patch("apps.downloads.services._slskd_request")
+    def test_update_download_statuses_uses_stored_completed_state_when_transfer_disappears(self, slskd_request):
+        track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
+        item = TrackImportItem.objects.create(
+            track_import=track_import,
+            row_number=1,
+            artists="Delain",
+            name="Lost",
+            search_query="Delain Lost",
+            status=TrackImportItem.STATUS_DOWNLOADING,
+        )
+        source = item.sources.create(rank=1, username="winner", remote_filename="song.flac")
+        source.mark_requested()
+        source.download_state = "Completed, Succeeded"
+        source.save(update_fields=["download_state", "updated_at"])
+        slskd_request.return_value = []
+
+        summary = update_download_statuses(track_import, enqueue_next=False)
+
+        item.refresh_from_db()
+        self.assertEqual(item.status, TrackImportItem.STATUS_DONE)
+        self.assertEqual(item.download_progress, 100)
+        self.assertEqual(item.download_path, "song.flac")
+        self.assertEqual(summary["done"], 1)
 
     @patch("apps.downloads.services._slskd_request")
     def test_enqueue_source_sets_download_start_and_progress_timestamps(self, slskd_request):

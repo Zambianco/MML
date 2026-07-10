@@ -5,15 +5,14 @@ from .models import TrackImport
 from .services import process_download_round
 
 
-@shared_task(bind=True)
-def process_download_round_task(self, track_import_id: int, limit: int = 0) -> dict[str, int]:
+def run_process_download_round(track_import_id: int, limit: int = 0, task_id: str = "") -> dict[str, int]:
     try:
         track_import = TrackImport.objects.get(pk=track_import_id)
     except TrackImport.DoesNotExist:
         return {"searched": 0, "queued": 0, "without_source": 0, "cancelled": 0}
 
-    if not track_import.processing_task_id:
-        track_import.processing_task_id = self.request.id or ""
+    if task_id and not track_import.processing_task_id:
+        track_import.processing_task_id = task_id
         track_import.save(update_fields=["processing_task_id"])
 
     def should_cancel() -> bool:
@@ -28,3 +27,8 @@ def process_download_round_task(self, track_import_id: int, limit: int = 0) -> d
     finally:
         track_import.processing_finished_at = timezone.now()
         track_import.save(update_fields=update_fields)
+
+
+@shared_task(bind=True)
+def process_download_round_task(self, track_import_id: int, limit: int = 0) -> dict[str, int]:
+    return run_process_download_round(track_import_id, limit=limit, task_id=self.request.id or "")
