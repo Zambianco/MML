@@ -54,6 +54,7 @@ if not CSRF_TRUSTED_ORIGINS:
     ]
 USE_SQLITE = env_bool("DJANGO_USE_SQLITE", default=not os.getenv("POSTGRES_HOST"))
 URL_PREFIX = "/mml"
+FORCE_SCRIPT_NAME = None if TESTING else URL_PREFIX
 
 INSTALLED_APPS = [
     "django.contrib.admin",
