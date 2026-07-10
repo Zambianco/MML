@@ -1,3 +1,4 @@
+import base64
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -8,8 +9,11 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from mutagen.flac import Picture
+
 from .backup import S3BackupStorage, build_backup_key, calculate_remote_sha256, ensure_sftp_directory, pending_backup_queryset, reconcile_backup_manifest
 from .models import BackupControl, BackupTarget, MediaFile, MonitoredDirectory
+from .transcoding import copy_flac_metadata_and_cover_to_opus
 
 
 class LibraryDashboardTests(TestCase):
@@ -178,6 +182,38 @@ class LibraryDashboardTests(TestCase):
         )
 
         self.assertEqual(list(pending_backup_queryset()), [pending])
+
+    def test_copy_flac_metadata_and_cover_to_opus_embeds_adjacent_cover(self):
+        class FakeSource:
+            tags = {"title": ["Song"]}
+            pictures = []
+
+        class FakeTarget(dict):
+            saved = False
+
+            def save(self):
+                self.saved = True
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_path = root / "song.flac"
+            output_path = root / "song.opus"
+            image_data = b"\x89PNG\r\n\x1a\ncover-bytes"
+            source_path.write_bytes(b"flac")
+            output_path.write_bytes(b"opus")
+            (root / "cover.png").write_bytes(image_data)
+            target = FakeTarget()
+
+            with patch("apps.mediafiles.transcoding.FLAC", return_value=FakeSource()), patch(
+                "apps.mediafiles.transcoding.OggOpus", return_value=target
+            ):
+                copy_flac_metadata_and_cover_to_opus(source_path=source_path, output_path=output_path)
+
+        picture = Picture(base64.b64decode(target["metadata_block_picture"][0]))
+        self.assertEqual(target["title"], ["Song"])
+        self.assertEqual(picture.mime, "image/png")
+        self.assertEqual(picture.data, image_data)
+        self.assertTrue(target.saved)
 
     def test_reconcile_backup_manifest_detects_missing_flacs(self):
         with TemporaryDirectory() as temp_dir:

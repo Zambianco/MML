@@ -1,3 +1,4 @@
+import base64
 import tempfile
 from datetime import timedelta
 from pathlib import Path
@@ -10,11 +11,13 @@ from django.utils import timezone
 from urllib.error import URLError
 from unittest.mock import patch
 
+from mutagen.flac import Picture
+
 from apps.library.models import Album, Artist, Track
 from apps.mediafiles.models import MediaFile, MonitoredDirectory
 
 from .models import TrackImport, TrackImportItem
-from .services import _slskd_request, build_slskd_search_query, enqueue_source, process_download_round, score_slskd_source, search_slskd_sources, skip_item_download, update_download_statuses
+from .services import _slskd_request, build_slskd_search_query, enqueue_source, process_download_round, recover_stuck_searches, score_slskd_source, search_slskd_sources, skip_item_download, update_download_statuses
 
 
 class FakeResponse:
@@ -681,6 +684,33 @@ class DownloadImportTests(TestCase):
         self.assertEqual(response.content, b"cover-bytes")
 
     @patch("apps.downloads.views.MutagenFile")
+    def test_file_cover_serves_opus_metadata_block_picture(self, mutagen_file):
+        image_data = b"\x89PNG\r\n\x1a\ncover-bytes"
+        picture = Picture()
+        picture.type = 3
+        picture.mime = "image/png"
+        picture.data = image_data
+        mutagen_file.return_value.tags = {"metadata_block_picture": [base64.b64encode(picture.write()).decode("ascii")]}
+        mutagen_file.return_value.pictures = []
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage_root = Path(temp_dir) / "music"
+            nested_dir = storage_root / "nested"
+            nested_dir.mkdir(parents=True)
+            (nested_dir / "track.opus").write_bytes(b"audio-bytes")
+
+            with override_settings(MUSIC_STORAGE_ROOT=storage_root, SLSKD_DOWNLOADS_DIR=storage_root):
+                response = self.client.get(
+                    reverse("downloads-file-cover"),
+                    {"path": "nested/track.opus"},
+                    HTTP_HOST="localhost",
+                )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/png")
+        self.assertEqual(response.content, image_data)
+
+    @patch("apps.downloads.views.MutagenFile")
     def test_music_player_page_prefers_structured_audio_metadata(self, mutagen_file):
         mutagen_file.return_value.tags = {
             "title": ["Shine"],
@@ -1072,6 +1102,78 @@ class DownloadImportTests(TestCase):
         self.assertIsNotNone(item.search_finished_at)
         self.assertEqual(slskd_request.call_args_list[-1].args[:2], ("DELETE", "/api/v0/searches/abc"))
         sleep.assert_not_called()
+
+    @patch("apps.downloads.services._slskd_request")
+    def test_recover_stuck_search_fetches_saved_responses_and_queues_download(self, slskd_request):
+        track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
+        item = TrackImportItem.objects.create(
+            track_import=track_import,
+            row_number=612,
+            artists="Elton John",
+            name="I'm Still Standing",
+            album="Too Low For Zero",
+            year=1983,
+            search_query="Elton John I'm Still Standing Too Low For Zero 1983",
+            status=TrackImportItem.STATUS_SEARCHING,
+            search_slskd_id="search-612",
+            search_state="Completed, TimedOut",
+            search_response_count=145,
+            search_started_at=timezone.now() - timedelta(hours=21),
+        )
+        slskd_request.side_effect = [
+            {"isComplete": True, "state": "Completed, TimedOut", "responseCount": 145},
+            [
+                {
+                    "username": "user",
+                    "queueLength": 0,
+                    "uploadSpeed": 1000,
+                    "files": [
+                        {
+                            "filename": "Elton John - I'm Still Standing.flac",
+                            "extension": "flac",
+                            "size": 123,
+                            "length": 184,
+                        }
+                    ],
+                }
+            ],
+            None,
+        ]
+
+        summary = recover_stuck_searches(track_import)
+
+        item.refresh_from_db()
+        self.assertEqual(summary["queued"], 1)
+        self.assertEqual(item.status, TrackImportItem.STATUS_DOWNLOADING)
+        self.assertEqual(item.download_path, "Elton John - I'm Still Standing.flac")
+        self.assertIsNotNone(item.search_finished_at)
+        self.assertEqual(item.sources.count(), 1)
+
+    @patch("apps.downloads.services._slskd_request")
+    def test_recover_stuck_search_queues_existing_source(self, slskd_request):
+        track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
+        item = TrackImportItem.objects.create(
+            track_import=track_import,
+            row_number=641,
+            artists="Dio",
+            name="Holy Diver",
+            year=1983,
+            search_query="Dio Holy Diver 1983",
+            status=TrackImportItem.STATUS_SEARCHING,
+            search_state="Completed, ResponseLimitReached",
+            search_response_count=250,
+            search_started_at=timezone.now() - timedelta(hours=1, minutes=17),
+        )
+        item.sources.create(rank=1, username="user", remote_filename="Dio - Holy Diver.flac", score=100)
+        slskd_request.return_value = None
+
+        summary = recover_stuck_searches(track_import)
+
+        item.refresh_from_db()
+        self.assertEqual(summary["queued"], 1)
+        self.assertEqual(item.status, TrackImportItem.STATUS_DOWNLOADING)
+        self.assertEqual(item.download_path, "Dio - Holy Diver.flac")
+        self.assertEqual(slskd_request.call_count, 1)
 
     def test_item_query_update_manual(self):
         track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)

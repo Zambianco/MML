@@ -1,4 +1,5 @@
 import csv
+from datetime import timedelta
 import io
 import json
 import re
@@ -231,6 +232,10 @@ def search_slskd_sources(
         if cancelled or not keep_search:
             _slskd_request("DELETE", f"/api/v0/searches/{search_id}")
 
+    return _save_ranked_sources(item, responses, max_sources=max_sources)
+
+
+def _save_ranked_sources(item: TrackImportItem, responses: list[dict], max_sources: int = MAX_SOURCES_PER_ITEM) -> list[TrackImportItemSource]:
     ranked: list[tuple[float, dict, dict]] = []
     for response in responses:
         for file_data in response.get("files", []):
@@ -302,6 +307,80 @@ def enqueue_best_available_source(item: TrackImportItem) -> TrackImportItemSourc
         return source
     enqueue_source(source)
     return source
+
+
+def _is_stuck_search(item: TrackImportItem, now=None) -> bool:
+    if item.status != TrackImportItem.STATUS_SEARCHING:
+        return False
+    if item.search_finished_at is not None:
+        return True
+    normalized_state = str(item.search_state or "").casefold()
+    if "completed" in normalized_state or "timedout" in normalized_state or "responselimitreached" in normalized_state:
+        return True
+    if item.search_started_at is None:
+        return False
+    now = now or timezone.now()
+    return item.search_started_at <= now - timedelta(seconds=SEARCH_TIMEOUT_SECONDS)
+
+
+def recover_stuck_search_item(item: TrackImportItem) -> str:
+    if not _is_stuck_search(item):
+        return "skipped"
+
+    next_source = item.sources.filter(download_requested_at__isnull=True).order_by("rank", "-score").first()
+    if next_source is None and item.search_slskd_id:
+        search_id = quote(str(item.search_slskd_id), safe="")
+        status = _slskd_request("GET", f"/api/v0/searches/{search_id}") or {}
+        item.search_state = str(status.get("state") or item.search_state or "")
+        item.search_response_count = int(status.get("responseCount") or item.search_response_count or 0)
+        item.search_finished_at = item.search_finished_at or timezone.now()
+        item.save(update_fields=["search_state", "search_response_count", "search_finished_at", "updated_at"])
+        responses = _slskd_request("GET", f"/api/v0/searches/{search_id}/responses") or []
+        sources = _save_ranked_sources(item, responses)
+        next_source = next((source for source in sources if source.download_requested_at is None), None)
+
+    if next_source is not None:
+        enqueue_source(next_source)
+        return "queued"
+
+    requested_source = item.sources.filter(download_requested_at__isnull=False).order_by("rank", "-score").first()
+    if requested_source is not None:
+        now = timezone.now()
+        item.status = TrackImportItem.STATUS_DOWNLOADING
+        item.download_path = item.download_path or requested_source.remote_filename
+        item.download_started_at = item.download_started_at or requested_source.download_requested_at or now
+        item.download_progress_updated_at = item.download_progress_updated_at or item.download_started_at
+        item.last_error = ""
+        item.save(
+            update_fields=[
+                "status",
+                "download_path",
+                "download_started_at",
+                "download_progress_updated_at",
+                "last_error",
+                "updated_at",
+            ]
+        )
+        return "downloading"
+
+    item.status = TrackImportItem.STATUS_ERROR
+    item.last_error = "Busca finalizada sem fonte enfileiravel no slskd."
+    item.search_finished_at = item.search_finished_at or timezone.now()
+    item.save(update_fields=["status", "last_error", "search_finished_at", "updated_at"])
+    return "failed"
+
+
+def recover_stuck_searches(track_import: TrackImport, limit: int = 20) -> dict[str, int]:
+    summary = {"queued": 0, "downloading": 0, "failed": 0}
+    candidates = list(
+        track_import.items.filter(status=TrackImportItem.STATUS_SEARCHING)
+        .order_by("search_started_at", "row_number", "id")[:limit]
+    )
+    for item in candidates:
+        result = recover_stuck_search_item(item)
+        if result in summary:
+            summary[result] += 1
+    return summary
 
 
 def skip_item_download(item: TrackImportItem) -> TrackImportItemSource | None:
@@ -595,10 +674,18 @@ def _process_round_items(items, should_cancel: Callable[[], bool] | None = None)
 
 
 def process_download_round(track_import: TrackImport, limit: int = 0, should_cancel: Callable[[], bool] | None = None) -> dict[str, int]:
+    recovered = recover_stuck_searches(track_import)
+    recovered_queued = recovered["queued"] + recovered["downloading"]
+    recovered_failed = recovered["failed"]
     if limit > 0:
-        return _process_round_items(_round_items_queryset(track_import)[:limit], should_cancel=should_cancel)
+        summary = _process_round_items(_round_items_queryset(track_import)[:limit], should_cancel=should_cancel)
+        summary["queued"] += recovered_queued
+        summary["without_source"] += recovered_failed
+        return summary
 
     summary = {"searched": 0, "queued": 0, "without_source": 0, "cancelled": 0}
+    summary["queued"] += recovered_queued
+    summary["without_source"] += recovered_failed
     include_errors = True
     while True:
         if should_cancel is not None and should_cancel():

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import mimetypes
 import subprocess
 from pathlib import Path
 
@@ -18,6 +19,8 @@ except ImportError:  # pragma: no cover - optional dependency during local boots
     FLAC = None
     OggOpus = None
     Picture = None
+
+LOCAL_COVER_NAMES = ("cover.jpg", "cover.jpeg", "cover.png", "cover.webp", "folder.jpg", "folder.jpeg", "folder.png", "album.jpg", "album.jpeg", "album.png")
 
 
 class TranscodeError(Exception):
@@ -115,11 +118,32 @@ def copy_flac_metadata_and_cover_to_opus(*, source_path: Path, output_path: Path
     target = OggOpus(output_path)
     target.clear()
 
-    for key, values in source.tags.items():
+    for key, values in (source.tags or {}).items():
         target[key] = [str(value) for value in values]
 
     pictures = list(getattr(source, "pictures", []))
+    if not pictures:
+        local_cover = local_cover_candidate(source_path)
+        if local_cover is not None:
+            pictures.append(picture_from_local_cover(local_cover))
     if pictures:
         target["metadata_block_picture"] = [base64.b64encode(picture.write()).decode("ascii") for picture in pictures]
 
     target.save()
+
+
+def local_cover_candidate(path: Path) -> Path | None:
+    for name in LOCAL_COVER_NAMES:
+        candidate = path.with_name(name)
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def picture_from_local_cover(path: Path) -> Picture:
+    picture = Picture()
+    picture.type = 3
+    picture.mime = mimetypes.guess_type(path.name)[0] or "image/jpeg"
+    picture.desc = "Cover"
+    picture.data = path.read_bytes()
+    return picture

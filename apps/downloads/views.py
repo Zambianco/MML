@@ -1,3 +1,4 @@
+import base64
 import json
 from datetime import datetime
 from datetime import timedelta
@@ -24,6 +25,11 @@ from django.conf import settings
 from django.utils import timezone
 from urllib.error import URLError
 
+try:
+    from mutagen.flac import Picture
+except ImportError:  # pragma: no cover - optional dependency during local bootstrap
+    Picture = None
+
 from apps.core.audio import stream_audio_file
 from apps.mediafiles.models import MediaFile
 from apps.mediafiles.services import preferred_media_paths
@@ -36,6 +42,7 @@ from .services import (
     create_track_import,
     enqueue_best_available_source,
     refresh_auto_item_search_query,
+    recover_stuck_searches,
     sync_item_search_query,
     search_slskd_sources,
     skip_item_download,
@@ -528,6 +535,10 @@ def _embedded_cover_asset(path: Path) -> tuple[bytes, str] | None:
         if data:
             return data, _image_content_type(data, getattr(picture, "mime", "") or "image/jpeg")
 
+    metadata_block_picture = _metadata_block_picture_cover(tags)
+    if metadata_block_picture is not None:
+        return metadata_block_picture
+
     if tags is not None:
         covr = getattr(tags, "get", lambda _key, _default=None: None)("covr")
         if covr:
@@ -535,6 +546,25 @@ def _embedded_cover_asset(path: Path) -> tuple[bytes, str] | None:
             if data:
                 return data, _image_content_type(data, "image/jpeg")
 
+    return None
+
+
+def _metadata_block_picture_cover(tags) -> tuple[bytes, str] | None:
+    if Picture is None or tags is None or not hasattr(tags, "get"):
+        return None
+    values = tags.get("metadata_block_picture") or tags.get("METADATA_BLOCK_PICTURE")
+    if not values:
+        return None
+    if isinstance(values, (str, bytes)):
+        values = [values]
+    for value in values:
+        try:
+            picture = Picture(base64.b64decode(value))
+        except Exception:
+            continue
+        data = getattr(picture, "data", None)
+        if data:
+            return data, _image_content_type(data, getattr(picture, "mime", "") or "image/jpeg")
     return None
 
 
@@ -645,6 +675,7 @@ def _import_detail_context(
     track_import = TrackImport.objects.get(pk=track_import.pk)
     if refresh_status:
         try:
+            recover_stuck_searches(track_import)
             update_download_statuses(track_import, enqueue_next=False)
         except URLError as exc:
             if request is not None:
