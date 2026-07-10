@@ -153,7 +153,7 @@ def _refresh_processing_state(track_import: TrackImport) -> None:
     task_id = track_import.processing_task_id
     if not _has_active_search(track_import):
         local_task_missing = bool(task_id and task_id.startswith(LOCAL_TASK_PREFIX) and task_id not in LOCAL_PROCESSING_TASKS)
-        if local_task_missing or timezone.now() - started_at >= PROCESSING_NO_SEARCH_GRACE:
+        if local_task_missing and timezone.now() - started_at >= PROCESSING_NO_SEARCH_GRACE:
             _mark_processing_finished(track_import)
         return
 

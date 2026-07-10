@@ -305,6 +305,29 @@ class DownloadImportTests(TestCase):
         self.assertTrue(track_import.is_processing)
         self.assertTrue(track_import.processing_task_id.startswith("local-download-round-"))
 
+    def test_import_detail_keeps_recent_local_task_without_active_search(self):
+        track_import = TrackImport.objects.create(
+            source_name="downloads.csv",
+            item_count=1,
+            processing_task_id="local-download-round-missing",
+            processing_started_at=timezone.now(),
+        )
+        TrackImportItem.objects.create(
+            track_import=track_import,
+            row_number=1,
+            artists="Dio",
+            name="Holy Diver",
+            search_query="Dio Holy Diver",
+            status=TrackImportItem.STATUS_PENDING,
+        )
+
+        response = self.client.get(reverse("downloads-import-detail", args=[track_import.pk]), HTTP_HOST="localhost")
+
+        self.assertEqual(response.status_code, 200)
+        track_import.refresh_from_db()
+        self.assertTrue(track_import.is_processing)
+        self.assertContains(response, "Rodada em background")
+
     def test_import_detail_releases_processing_without_active_search(self):
         track_import = TrackImport.objects.create(
             source_name="downloads.csv",
