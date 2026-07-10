@@ -99,7 +99,7 @@ def _slskd_request(method: str, path: str, payload=None):
             with urlopen(request, timeout=settings.SLSKD_REQUEST_TIMEOUT_SECONDS) as response:
                 body = response.read()
                 return json.loads(body.decode("utf-8")) if body else None
-        except URLError as exc:
+        except (URLError, TimeoutError) as exc:
             last_error = exc
 
     raise last_error
@@ -705,7 +705,7 @@ def process_download_round(track_import: TrackImport, limit: int = 0, should_can
             continue
         try:
             update_download_statuses(track_import)
-        except URLError:
+        except (URLError, TimeoutError):
             pass
         break
 

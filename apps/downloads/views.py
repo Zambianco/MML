@@ -700,7 +700,7 @@ def _import_detail_context(
         try:
             recover_stuck_searches(track_import)
             update_download_statuses(track_import, enqueue_next=False)
-        except URLError as exc:
+        except (URLError, TimeoutError) as exc:
             if request is not None:
                 messages.error(request, f"Nao foi possivel conectar ao slskd: {exc.reason}")
         else:
@@ -945,7 +945,7 @@ def refresh_status(request: HttpRequest, pk: int) -> HttpResponse:
     track_import = get_object_or_404(TrackImport, pk=pk)
     try:
         summary = update_download_statuses(track_import)
-    except URLError as exc:
+    except (URLError, TimeoutError) as exc:
         messages.error(request, f"Nao foi possivel conectar ao slskd: {exc.reason}")
     else:
         messages.success(
@@ -961,7 +961,7 @@ def item_search(request: HttpRequest, pk: int, item_pk: int) -> HttpResponse:
     item = get_object_or_404(TrackImportItem, pk=item_pk, track_import=track_import)
     try:
         search_slskd_sources(item)
-    except URLError as exc:
+    except (URLError, TimeoutError) as exc:
         messages.error(request, f"Nao foi possivel conectar ao slskd: {exc.reason}")
     except Exception:
         messages.error(request, "Falha ao buscar fontes no slskd.")
@@ -996,7 +996,7 @@ def item_transfer(request: HttpRequest, pk: int, item_pk: int) -> HttpResponse:
     item = get_object_or_404(TrackImportItem, pk=item_pk, track_import=track_import)
     try:
         source = enqueue_best_available_source(item)
-    except URLError as exc:
+    except (URLError, TimeoutError) as exc:
         messages.error(request, f"Nao foi possivel conectar ao slskd: {exc.reason}")
     except ValueError as exc:
         messages.error(request, str(exc))
@@ -1016,7 +1016,7 @@ def item_skip_source(request: HttpRequest, pk: int, item_pk: int) -> HttpRespons
     item = get_object_or_404(TrackImportItem, pk=item_pk, track_import=track_import)
     try:
         source = skip_item_download(item)
-    except URLError as exc:
+    except (URLError, TimeoutError) as exc:
         messages.error(request, f"Nao foi possivel conectar ao slskd: {exc.reason}")
     except ValueError as exc:
         messages.error(request, str(exc))
