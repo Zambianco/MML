@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 from io import StringIO
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from urllib.parse import quote
 
 from django.utils import timezone
@@ -219,7 +219,7 @@ def build_object_tagging(media_file: MediaFile) -> str:
 
 def ensure_sftp_directory(sftp, destination: str) -> None:
     current = ""
-    for part in Path(destination).parent.parts:
+    for part in PurePosixPath(destination).parent.parts:
         current = f"{current}/{part}".replace("//", "/")
         try:
             sftp.stat(current)

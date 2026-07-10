@@ -8,7 +8,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from .backup import S3BackupStorage, build_backup_key, calculate_remote_sha256, pending_backup_queryset
+from .backup import S3BackupStorage, build_backup_key, calculate_remote_sha256, ensure_sftp_directory, pending_backup_queryset
 from .models import BackupTarget, MediaFile, MonitoredDirectory
 
 
@@ -250,6 +250,24 @@ class LibraryDashboardTests(TestCase):
 
         client.head_object.assert_called_once()
 
+    def test_ensure_sftp_directory_uses_posix_paths(self):
+        class FakeSFTP:
+            def __init__(self):
+                self.created = []
+
+            def stat(self, path: str):
+                if path == "/":
+                    return object()
+                raise OSError
+
+            def mkdir(self, path: str):
+                self.created.append(path)
+
+        sftp = FakeSFTP()
+
+        ensure_sftp_directory(sftp, "/backup/music/ab/file.flac")
+
+        self.assertEqual(sftp.created, ["/backup", "/backup/music", "/backup/music/ab"])
     def test_calculate_remote_sha256_reads_remote_file(self):
         class RemoteFile:
             def __init__(self, data: bytes):
