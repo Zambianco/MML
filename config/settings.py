@@ -44,6 +44,14 @@ def env_float(name: str, default: float) -> float:
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "unsafe-development-key")
 DEBUG = env_bool("DJANGO_DEBUG", default=False)
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", default="127.0.0.1,localhost")
+CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
+if not CSRF_TRUSTED_ORIGINS:
+    CSRF_TRUSTED_ORIGINS = [
+        f"{scheme}://{host}"
+        for host in ALLOWED_HOSTS
+        if host != "*" and not host.startswith(".")
+        for scheme in ("http", "https")
+    ]
 USE_SQLITE = env_bool("DJANGO_USE_SQLITE", default=not os.getenv("POSTGRES_HOST"))
 URL_PREFIX = "/mml"
 
