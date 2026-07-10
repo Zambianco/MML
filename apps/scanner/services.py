@@ -13,7 +13,6 @@ from django.utils import timezone
 
 from apps.library.models import Album, Artist, Track
 from apps.mediafiles.models import MediaFile, MonitoredDirectory
-from apps.mediafiles.tasks import transcode_media_file_task
 
 try:
     import acoustid
@@ -161,6 +160,8 @@ def scan_directory(directory: MonitoredDirectory) -> ScanResult:
             media_file.transcode_error = ""
             media_file.save(update_fields=["transcode_status", "transcode_error", "updated_at"])
             try:
+                from apps.mediafiles.tasks import transcode_media_file_task
+
                 transcode_media_file_task.delay(media_file.id)
             except Exception:
                 pass
