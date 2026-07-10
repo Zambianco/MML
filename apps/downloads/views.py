@@ -52,6 +52,7 @@ from .tasks import process_download_round_task, run_process_download_round
 
 ITEMS_PER_PAGE = 25
 PROCESSING_STALE_AFTER = timedelta(hours=1)
+PROCESSING_NO_SEARCH_GRACE = timedelta(seconds=30)
 LOCAL_TASK_PREFIX = "local-download-round-"
 LOCAL_PROCESSING_TASKS: set[str] = set()
 LOCAL_COVER_NAMES = ("cover.jpg", "cover.jpeg", "cover.png", "cover.webp", "folder.jpg", "folder.jpeg", "folder.png", "album.jpg", "album.jpeg", "album.png")
@@ -139,12 +140,22 @@ def _start_process_round_background(track_import: TrackImport, limit: int) -> No
     _start_local_process_round(track_import, limit)
 
 
+def _has_active_search(track_import: TrackImport) -> bool:
+    return track_import.items.filter(status=TrackImportItem.STATUS_SEARCHING).exists()
+
+
 def _refresh_processing_state(track_import: TrackImport) -> None:
     if not track_import.is_processing:
         return
 
     started_at = track_import.processing_started_at or timezone.now()
     task_id = track_import.processing_task_id
+    if not _has_active_search(track_import):
+        local_task_missing = bool(task_id and task_id.startswith(LOCAL_TASK_PREFIX) and task_id not in LOCAL_PROCESSING_TASKS)
+        if local_task_missing or timezone.now() - started_at >= PROCESSING_NO_SEARCH_GRACE:
+            _mark_processing_finished(track_import)
+        return
+
     if not task_id:
         if timezone.now() - started_at >= PROCESSING_STALE_AFTER:
             _mark_processing_finished(track_import)
@@ -877,6 +888,10 @@ def import_detail_fragment(request: HttpRequest, pk: int) -> HttpResponse:
 def process_round(request: HttpRequest, pk: int) -> HttpResponse:
     track_import = get_object_or_404(TrackImport, pk=pk)
     _refresh_processing_state(track_import)
+    track_import.refresh_from_db()
+    if track_import.is_processing and not _has_active_search(track_import):
+        _mark_processing_finished(track_import)
+        track_import.refresh_from_db()
     limit = int(request.POST.get("limit") or 0)
     if track_import.is_processing:
         messages.warning(request, "Ja existe uma rodada em processamento para esta importacao.")

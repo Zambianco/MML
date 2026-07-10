@@ -703,14 +703,11 @@ def process_download_round(track_import: TrackImport, limit: int = 0, should_can
             break
         if batch_summary["searched"] or batch_summary["queued"] or batch_summary["without_source"]:
             continue
-        if not track_import.items.filter(status=TrackImportItem.STATUS_DOWNLOADING).exists():
-            break
         try:
             update_download_statuses(track_import)
         except URLError:
-            time.sleep(SEARCH_STATUS_INTERVAL_SECONDS)
-            continue
-        time.sleep(SEARCH_STATUS_INTERVAL_SECONDS)
+            pass
+        break
 
     return summary
 

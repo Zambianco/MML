@@ -281,6 +281,57 @@ class DownloadImportTests(TestCase):
         self.assertEqual(track_import.processing_last_error, "")
         self.assertTrue(track_import.is_processing)
 
+    def test_import_detail_releases_processing_without_active_search(self):
+        track_import = TrackImport.objects.create(
+            source_name="downloads.csv",
+            item_count=1,
+            processing_task_id="local-download-round-missing",
+            processing_started_at=timezone.now() - timedelta(minutes=2),
+        )
+        TrackImportItem.objects.create(
+            track_import=track_import,
+            row_number=1,
+            artists="Dio",
+            name="Holy Diver",
+            search_query="Dio Holy Diver",
+            status=TrackImportItem.STATUS_DOWNLOADING,
+        )
+
+        response = self.client.get(reverse("downloads-import-detail", args=[track_import.pk]), HTTP_HOST="localhost")
+
+        self.assertEqual(response.status_code, 200)
+        track_import.refresh_from_db()
+        self.assertFalse(track_import.is_processing)
+        self.assertNotContains(response, "Cancelar rodada")
+        self.assertContains(response, '<button class="btn btn-dark" type="submit" >Buscar e enfileirar</button>', html=False)
+
+    @patch("apps.downloads.views._start_local_process_round")
+    @patch("apps.downloads.views._celery_workers_available", return_value=False)
+    def test_process_round_allows_new_round_when_previous_has_no_active_search(self, _workers_available, start_local):
+        track_import = TrackImport.objects.create(
+            source_name="downloads.csv",
+            item_count=1,
+            processing_task_id="local-download-round-missing",
+            processing_started_at=timezone.now() - timedelta(minutes=2),
+        )
+        TrackImportItem.objects.create(
+            track_import=track_import,
+            row_number=1,
+            artists="Dio",
+            name="Holy Diver",
+            search_query="Dio Holy Diver",
+            status=TrackImportItem.STATUS_DOWNLOADING,
+        )
+
+        response = self.client.post(
+            reverse("downloads-process-round", args=[track_import.pk]),
+            {"limit": "5"},
+            HTTP_HOST="localhost",
+        )
+
+        self.assertRedirects(response, reverse("downloads-import-detail", args=[track_import.pk]))
+        start_local.assert_called_once()
+
     def test_cancel_round_marks_import_for_cancellation(self):
         track_import = TrackImport.objects.create(
             source_name="downloads.csv",
@@ -1364,7 +1415,7 @@ class DownloadImportTests(TestCase):
     @patch("apps.downloads.services.update_download_statuses")
     @patch("apps.downloads.services.enqueue_source")
     @patch("apps.downloads.services.search_slskd_sources")
-    def test_process_round_with_zero_limit_runs_until_downloads_finish(self, search_slskd_sources, enqueue_source, update_download_statuses, _sleep):
+    def test_process_round_with_zero_limit_does_not_wait_for_downloads(self, search_slskd_sources, enqueue_source, update_download_statuses, _sleep):
         track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
         item = TrackImportItem.objects.create(
             track_import=track_import,
@@ -1393,16 +1444,16 @@ class DownloadImportTests(TestCase):
         summary = process_download_round(track_import, limit=0)
 
         self.assertEqual(summary, {"searched": 1, "queued": 1, "without_source": 0, "cancelled": 0})
-        self.assertEqual(update_download_statuses.call_count, 2)
+        self.assertEqual(update_download_statuses.call_count, 1)
         search_slskd_sources.assert_called_once()
         item.refresh_from_db()
-        self.assertEqual(item.status, TrackImportItem.STATUS_DONE)
+        self.assertEqual(item.status, TrackImportItem.STATUS_DOWNLOADING)
 
     @patch("apps.downloads.services.time.sleep")
     @patch("apps.downloads.services.update_download_statuses")
     @patch("apps.downloads.services.enqueue_source")
     @patch("apps.downloads.services.search_slskd_sources")
-    def test_process_round_with_zero_limit_ignores_transfer_status_connection_error(self, search_slskd_sources, enqueue_source, update_download_statuses, _sleep):
+    def test_process_round_with_zero_limit_finishes_after_enqueuing(self, search_slskd_sources, enqueue_source, update_download_statuses, _sleep):
         track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
         item = TrackImportItem.objects.create(
             track_import=track_import,
@@ -1432,9 +1483,9 @@ class DownloadImportTests(TestCase):
         summary = process_download_round(track_import, limit=0)
 
         self.assertEqual(summary, {"searched": 1, "queued": 1, "without_source": 0, "cancelled": 0})
-        self.assertEqual(update_download_statuses.call_count, 2)
+        self.assertEqual(update_download_statuses.call_count, 1)
         item.refresh_from_db()
-        self.assertEqual(item.status, TrackImportItem.STATUS_DONE)
+        self.assertEqual(item.status, TrackImportItem.STATUS_DOWNLOADING)
 
     @override_settings(SLSKD_BASE_URL="http://slskd:5030")
     @patch("apps.downloads.services.urlopen")
