@@ -56,6 +56,62 @@
     </div>
 </div>
 
+{% if active_search_items or active_download_items %}
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-body">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+            <h2 class="h5 mb-0">Atividade agora</h2>
+            {% if should_poll %}<div class="small text-secondary">Atualizando a cada 5s</div>{% endif %}
+        </div>
+        <div class="row g-3">
+            <div class="col-lg-6">
+                <div class="small text-secondary mb-2">Buscando agora</div>
+                <div class="d-grid gap-2">
+                    {% for item in active_search_items %}
+                        <div class="active-item">
+                            <div class="fw-semibold">Linha {{ item.row_number }}: {{ item.artists }} - {{ item.name }}</div>
+                            <div class="small text-secondary text-break">{{ item.search_query }}</div>
+                            <div class="small mt-1">{{ item.search_state|default:"Started" }} - {{ item.search_response_count }} resposta(s)</div>
+                            {% if item.search_started_at %}
+                                <div class="small text-secondary">Tempo de busca: {{ item.search_started_at|timesince }}</div>
+                            {% endif %}
+                        </div>
+                    {% empty %}
+                        <div class="small text-secondary">Nenhuma busca ativa.</div>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="small text-secondary mb-2">Baixando agora</div>
+                <div class="d-grid gap-2">
+                    {% for item in active_download_items %}
+                        <div class="active-item">
+                            <div class="fw-semibold">Linha {{ item.row_number }}: {{ item.artists }} - {{ item.name }}</div>
+                            <div class="progress my-2" role="progressbar" aria-label="Download de {{ item.name }}" aria-valuenow="{{ item.download_progress }}" aria-valuemin="0" aria-valuemax="100">
+                                <div class="progress-bar bg-dark" style="width: {{ item.download_progress }}%">{{ item.download_progress }}%</div>
+                            </div>
+                            {% if item.download_path %}
+                                <div class="small text-secondary text-break">{{ item.download_path }}</div>
+                            {% endif %}
+                            <div class="small text-secondary">
+                                {% if item.download_started_at %}Baixando ha {{ item.download_started_at|timesince }}{% endif %}
+                                {% if item.download_progress_updated_at %} - Sem progresso ha {{ item.download_progress_updated_at|timesince }}{% endif %}
+                            </div>
+                            <form class="mt-2" method="post" action="{% url 'downloads-item-skip-source' track_import.pk item.pk %}{% if querystring %}?{{ querystring }}&page={{ page_obj.number }}{% else %}?page={{ page_obj.number }}{% endif %}">
+                                {% csrf_token %}
+                                <button class="btn btn-outline-danger btn-sm" type="submit">Parar e tentar proxima fonte</button>
+                            </form>
+                        </div>
+                    {% empty %}
+                        <div class="small text-secondary">Nenhum download ativo.</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <div class="card shadow-sm border-0 mb-4">
     <div class="card-body">
         {% if track_import.is_processing %}
@@ -219,6 +275,15 @@
                                 {% if item.download_started_at %}
                                     <div class="small text-secondary mt-1">Inicio {{ item.download_started_at|date:"d/m/Y H:i" }}</div>
                                 {% endif %}
+                                {% if item.download_progress_updated_at %}
+                                    <div class="small text-secondary">Sem progresso ha {{ item.download_progress_updated_at|timesince }}</div>
+                                {% endif %}
+                                {% if item.status == "downloading" %}
+                                    <form class="mt-2" method="post" action="{% url 'downloads-item-skip-source' track_import.pk item.pk %}{% if querystring %}?{{ querystring }}&page={{ page_obj.number }}{% else %}?page={{ page_obj.number }}{% endif %}">
+                                        {% csrf_token %}
+                                        <button class="btn btn-outline-danger btn-sm" type="submit">Parar e proxima fonte</button>
+                                    </form>
+                                {% endif %}
                                 <form class="mt-2 d-flex gap-2 flex-wrap" method="post" action="{% url 'downloads-item-transfer' track_import.pk item.pk %}{% if querystring %}?{{ querystring }}&page={{ page_obj.number }}{% else %}?page={{ page_obj.number }}{% endif %}">
                                     {% csrf_token %}
                                     <button class="btn btn-dark btn-sm" type="submit">Transferir</button>
@@ -312,6 +377,9 @@
                         {% if item.download_started_at %}
                             <div class="small text-secondary">Inicio {{ item.download_started_at|date:"d/m/Y H:i" }}</div>
                         {% endif %}
+                        {% if item.download_progress_updated_at %}
+                            <div class="small text-secondary">Sem progresso ha {{ item.download_progress_updated_at|timesince }}</div>
+                        {% endif %}
                     </div>
 
                     {% if item.last_error %}
@@ -323,6 +391,12 @@
                             {% csrf_token %}
                             <button class="btn btn-outline-dark btn-sm" type="submit">Buscar</button>
                         </form>
+                        {% if item.status == "downloading" %}
+                            <form method="post" action="{% url 'downloads-item-skip-source' track_import.pk item.pk %}{% if querystring %}?{{ querystring }}&page={{ page_obj.number }}{% else %}?page={{ page_obj.number }}{% endif %}">
+                                {% csrf_token %}
+                                <button class="btn btn-outline-danger btn-sm" type="submit">Parar e proxima fonte</button>
+                            </form>
+                        {% endif %}
                         <form method="post" action="{% url 'downloads-item-transfer' track_import.pk item.pk %}{% if querystring %}?{{ querystring }}&page={{ page_obj.number }}{% else %}?page={{ page_obj.number }}{% endif %}">
                             {% csrf_token %}
                             <button class="btn btn-dark btn-sm" type="submit">Transferir</button>

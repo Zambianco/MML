@@ -173,7 +173,12 @@ def sync_item_search_query(item: TrackImportItem) -> str:
     return refresh_auto_item_search_query(item)
 
 
-def search_slskd_sources(item: TrackImportItem, max_sources: int = MAX_SOURCES_PER_ITEM, keep_search: bool = True) -> list[TrackImportItemSource]:
+def search_slskd_sources(
+    item: TrackImportItem,
+    max_sources: int = MAX_SOURCES_PER_ITEM,
+    keep_search: bool = True,
+    should_cancel: Callable[[], bool] | None = None,
+) -> list[TrackImportItemSource]:
     search_query = sync_item_search_query(item)
 
     search = _slskd_request("POST", "/api/v0/searches", {"searchText": search_query})
@@ -199,8 +204,12 @@ def search_slskd_sources(item: TrackImportItem, max_sources: int = MAX_SOURCES_P
         ]
     )
 
+    cancelled = False
     try:
         while True:
+            if should_cancel is not None and should_cancel():
+                cancelled = True
+                break
             status = _slskd_request("GET", f"/api/v0/searches/{search_id}") or {}
             item.search_state = str(status.get("state") or "")
             item.search_response_count = int(status.get("responseCount") or 0)
@@ -209,11 +218,17 @@ def search_slskd_sources(item: TrackImportItem, max_sources: int = MAX_SOURCES_P
                 break
             time.sleep(SEARCH_STATUS_INTERVAL_SECONDS)
 
+        if cancelled:
+            item.search_state = "Cancelled"
+            item.search_finished_at = timezone.now()
+            item.save(update_fields=["search_state", "search_finished_at", "updated_at"])
+            return []
+
         responses = _slskd_request("GET", f"/api/v0/searches/{search_id}/responses") or []
         item.search_finished_at = timezone.now()
         item.save(update_fields=["search_finished_at", "updated_at"])
     finally:
-        if not keep_search:
+        if cancelled or not keep_search:
             _slskd_request("DELETE", f"/api/v0/searches/{search_id}")
 
     ranked: list[tuple[float, dict, dict]] = []
@@ -289,6 +304,56 @@ def enqueue_best_available_source(item: TrackImportItem) -> TrackImportItemSourc
     return source
 
 
+def skip_item_download(item: TrackImportItem) -> TrackImportItemSource | None:
+    if item.status != TrackImportItem.STATUS_DOWNLOADING:
+        raise ValueError("Este item nao esta baixando.")
+
+    requested_sources = list(
+        item.sources.filter(download_requested_at__isnull=False).order_by("rank", "-score")
+    )
+    downloads = _download_index()
+    skipped_source = None
+    skipped_state = ""
+
+    for source in requested_sources:
+        transfer = downloads.get((source.username.casefold(), source.remote_filename.casefold()))
+        if transfer is None:
+            continue
+        state = str(transfer.get("stateDescription") or transfer.get("state") or "")
+        if _slskd_item_status(state) == TrackImportItem.STATUS_DOWNLOADING:
+            _cancel_download_transfer(transfer)
+            skipped_source = source
+            skipped_state = state
+            break
+
+    if skipped_source is None and requested_sources:
+        normalized_path = item.download_path.strip().replace("\\", "/")
+        skipped_source = next(
+            (
+                source
+                for source in requested_sources
+                if source.remote_filename.strip().replace("\\", "/") == normalized_path
+                or Path(source.remote_filename).name == Path(normalized_path).name
+            ),
+            requested_sources[0],
+        )
+        skipped_state = skipped_source.download_state
+
+    if skipped_source is not None:
+        skipped_source.download_state = f"{skipped_state} | skipped-manual".strip(" |")
+        skipped_source.save(update_fields=["download_state", "updated_at"])
+
+    next_source = item.sources.filter(download_requested_at__isnull=True).order_by("rank", "-score").first()
+    if next_source is not None:
+        enqueue_source(next_source)
+        return next_source
+
+    item.status = TrackImportItem.STATUS_ERROR
+    item.last_error = "Download interrompido manualmente; nao ha proxima fonte ja encontrada."
+    item.save(update_fields=["status", "last_error", "updated_at"])
+    return None
+
+
 def _download_index() -> dict[tuple[str, str], dict]:
     index = {}
     for user_data in _slskd_request("GET", "/api/v0/transfers/downloads") or []:
@@ -346,7 +411,7 @@ def _slskd_item_status(state: str) -> str:
     normalized = re.sub(r"[^a-z]+", "", str(state or "").lower())
     if normalized == "completedsucceeded":
         return TrackImportItem.STATUS_DONE
-    if "reject" in normalized or "cancel" in normalized:
+    if "reject" in normalized or "cancel" in normalized or "skip" in normalized:
         return TrackImportItem.STATUS_ERROR
     if normalized.startswith("completed"):
         return TrackImportItem.STATUS_ERROR
@@ -492,7 +557,10 @@ def _process_round_items(items, should_cancel: Callable[[], bool] | None = None)
         item.status = TrackImportItem.STATUS_SEARCHING
         item.save(update_fields=["status", "updated_at"])
         try:
-            sources = search_slskd_sources(item)
+            if should_cancel is None:
+                sources = search_slskd_sources(item)
+            else:
+                sources = search_slskd_sources(item, should_cancel=should_cancel)
         except Exception:
             item.status = TrackImportItem.STATUS_ERROR
             item.last_error = "Falha ao buscar no slskd."

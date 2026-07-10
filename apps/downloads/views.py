@@ -38,6 +38,7 @@ from .services import (
     refresh_auto_item_search_query,
     sync_item_search_query,
     search_slskd_sources,
+    skip_item_download,
     update_download_statuses,
 )
 from .tasks import process_download_round_task, run_process_download_round
@@ -656,6 +657,16 @@ def _import_detail_context(
         + status_counts.get(TrackImportItem.STATUS_SEARCHING, 0)
         + status_counts.get(TrackImportItem.STATUS_ERROR, 0)
     )
+    active_search_items = list(
+        track_import.items.filter(status=TrackImportItem.STATUS_SEARCHING)
+        .order_by("search_started_at", "row_number", "id")[:5]
+    )
+    active_download_items = list(
+        track_import.items.filter(status=TrackImportItem.STATUS_DOWNLOADING)
+        .prefetch_related("sources")
+        .order_by("download_started_at", "row_number", "id")[:8]
+    )
+    should_poll = track_import.is_processing or bool(active_search_items) or bool(active_download_items)
     filters = filters or {"q": "", "status": "", "downloaded": "", "search_attempts": ""}
     items = _filter_import_items(
         track_import.items.all(),
@@ -674,6 +685,9 @@ def _import_detail_context(
         "page_obj": page_obj,
         "status_counts": status_counts,
         "queue_remaining_count": queue_remaining_count,
+        "active_search_items": active_search_items,
+        "active_download_items": active_download_items,
+        "should_poll": should_poll,
         "query_params": query_params,
         "querystring": querystring,
         "filters": filters,
@@ -932,6 +946,29 @@ def item_transfer(request: HttpRequest, pk: int, item_pk: int) -> HttpResponse:
         messages.error(request, "Falha ao enfileirar download no slskd.")
     else:
         messages.success(request, f"Download enfileirado para a linha {item.row_number}: {source.username}.")
+    page = request.GET.get("page")
+    if not page and item.row_number > 0:
+        page = str(((item.row_number - 1) // ITEMS_PER_PAGE) + 1)
+    return redirect(_import_detail_url(track_import, page=page, querystring=_preserved_import_querystring(request)))
+
+
+@require_http_methods(["POST"])
+def item_skip_source(request: HttpRequest, pk: int, item_pk: int) -> HttpResponse:
+    track_import = get_object_or_404(TrackImport, pk=pk)
+    item = get_object_or_404(TrackImportItem, pk=item_pk, track_import=track_import)
+    try:
+        source = skip_item_download(item)
+    except URLError as exc:
+        messages.error(request, f"Nao foi possivel conectar ao slskd: {exc.reason}")
+    except ValueError as exc:
+        messages.error(request, str(exc))
+    except Exception:
+        messages.error(request, "Falha ao pular a fonte atual no slskd.")
+    else:
+        if source is None:
+            messages.warning(request, f"Download interrompido na linha {item.row_number}; nao ha proxima fonte ja conhecida.")
+        else:
+            messages.warning(request, f"Fonte atual pulada na linha {item.row_number}; proxima fonte enfileirada: {source.username}.")
     page = request.GET.get("page")
     if not page and item.row_number > 0:
         page = str(((item.row_number - 1) // ITEMS_PER_PAGE) + 1)

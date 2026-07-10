@@ -14,7 +14,7 @@ from apps.library.models import Album, Artist, Track
 from apps.mediafiles.models import MediaFile, MonitoredDirectory
 
 from .models import TrackImport, TrackImportItem
-from .services import _slskd_request, build_slskd_search_query, enqueue_source, process_download_round, score_slskd_source, search_slskd_sources, update_download_statuses
+from .services import _slskd_request, build_slskd_search_query, enqueue_source, process_download_round, score_slskd_source, search_slskd_sources, skip_item_download, update_download_statuses
 
 
 class FakeResponse:
@@ -88,7 +88,7 @@ class DownloadImportTests(TestCase):
         self.assertContains(response, "45%")
 
     @patch("apps.downloads.views.update_download_statuses")
-    def test_import_detail_refreshes_statuses_without_polling(self, update_download_statuses):
+    def test_import_detail_polls_active_downloads(self, update_download_statuses):
         track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
         TrackImportItem.objects.create(
             track_import=track_import,
@@ -104,8 +104,9 @@ class DownloadImportTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(update_download_statuses.call_count, 1)
-        self.assertNotContains(response, "hx-get=")
-        self.assertNotContains(response, "every 10s")
+        self.assertContains(response, "hx-get=")
+        self.assertContains(response, "every 5s")
+        self.assertContains(response, "Atividade agora")
 
     @patch("apps.downloads.views.update_download_statuses")
     def test_import_detail_handles_slskd_connection_error(self, update_download_statuses):
@@ -994,6 +995,83 @@ class DownloadImportTests(TestCase):
         self.assertIsNotNone(next_source.download_requested_at)
         self.assertEqual(summary["failed"], 1)
         self.assertEqual(summary["queued_next"], 1)
+
+    @patch("apps.downloads.services._slskd_request")
+    def test_skip_item_download_cancels_current_transfer_and_queues_next(self, slskd_request):
+        track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
+        item = TrackImportItem.objects.create(
+            track_import=track_import,
+            row_number=1,
+            artists="Delain",
+            name="Lost",
+            search_query="Delain Lost",
+            status=TrackImportItem.STATUS_DOWNLOADING,
+            download_progress=35,
+            download_path="09 - Lost.flac",
+        )
+        current_source = item.sources.create(
+            rank=1,
+            username="user",
+            remote_filename="09 - Lost.flac",
+            download_state="InProgress",
+        )
+        current_source.mark_requested()
+        next_source = item.sources.create(rank=2, username="backup", remote_filename="09 - Lost (alt).flac")
+        slskd_request.side_effect = [
+            [
+                {
+                    "username": "user",
+                    "directories": [
+                        {
+                            "directory": "Album",
+                            "files": [
+                                {
+                                    "id": "transfer-1",
+                                    "filename": "09 - Lost.flac",
+                                    "state": "InProgress",
+                                    "percentComplete": 35,
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+            None,
+            None,
+        ]
+
+        queued_source = skip_item_download(item)
+
+        item.refresh_from_db()
+        current_source.refresh_from_db()
+        next_source.refresh_from_db()
+        self.assertEqual(queued_source, next_source)
+        self.assertEqual(item.status, TrackImportItem.STATUS_DOWNLOADING)
+        self.assertEqual(item.download_path, "09 - Lost (alt).flac")
+        self.assertIn("skipped-manual", current_source.download_state)
+        self.assertIsNotNone(next_source.download_requested_at)
+
+    @patch("apps.downloads.services.time.sleep")
+    @patch("apps.downloads.services._slskd_request")
+    def test_search_stops_when_cancel_requested(self, slskd_request, sleep):
+        track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
+        item = TrackImportItem.objects.create(
+            track_import=track_import,
+            row_number=1,
+            artists="Elysion",
+            name="Fairytale",
+            search_query="Elysion Fairytale",
+        )
+        slskd_request.side_effect = [{"id": "abc"}, None]
+
+        sources = search_slskd_sources(item, should_cancel=lambda: True)
+
+        item.refresh_from_db()
+        self.assertEqual(sources, [])
+        self.assertEqual(item.search_state, "Cancelled")
+        self.assertIsNotNone(item.search_finished_at)
+        self.assertEqual(slskd_request.call_args_list[-1].args[:2], ("DELETE", "/api/v0/searches/abc"))
+        sleep.assert_not_called()
 
     def test_item_query_update_manual(self):
         track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
