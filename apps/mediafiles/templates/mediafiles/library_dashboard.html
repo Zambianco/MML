@@ -229,6 +229,75 @@
 
             <div class="card shadow-sm border-0 mt-4">
                 <div class="card-body">
+                    <h2 class="h5 mb-3">Pipeline de audio</h2>
+                    <div class="small text-secondary mb-3">
+                        Conversao automatica para Opus no scan. Backup e exclusao locais sob ordem do usuario via Celery.
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <div class="border rounded p-2 small">Conversao pendente: <strong>{{ transcode_pending_count }}</strong></div>
+                        </div>
+                        <div class="col-6">
+                            <div class="border rounded p-2 small">Conversao em andamento: <strong>{{ transcode_processing_count }}</strong></div>
+                        </div>
+                        <div class="col-6">
+                            <div class="border rounded p-2 small">Opus gerado: <strong>{{ transcode_completed_count }}</strong></div>
+                        </div>
+                        <div class="col-6">
+                            <div class="border rounded p-2 small">Conversao falhou: <strong>{{ transcode_failed_count }}</strong></div>
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <div class="border rounded p-2 small">Backup pendente: <strong>{{ backup_pending_count }}</strong></div>
+                        </div>
+                        <div class="col-6">
+                            <div class="border rounded p-2 small">Backup confirmado: <strong>{{ backup_confirmed_count }}</strong></div>
+                        </div>
+                        <div class="col-6">
+                            <div class="border rounded p-2 small">Backup falhou: <strong>{{ backup_failed_count }}</strong></div>
+                        </div>
+                        <div class="col-6">
+                            <div class="border rounded p-2 small">FLAC pronto para exclusao: <strong>{{ cleanup_ready_count }}</strong></div>
+                        </div>
+                    </div>
+                    <div class="d-grid gap-2 mb-3">
+                        <form method="post" action="{% url 'queue-backups' %}">
+                            {% csrf_token %}
+                            <button class="btn btn-dark w-100" type="submit">Realizar backup</button>
+                        </form>
+                        <form method="post" action="{% url 'queue-cleanup' %}">
+                            {% csrf_token %}
+                            <button class="btn btn-outline-danger w-100" type="submit">Excluir FLACs elegiveis</button>
+                        </form>
+                    </div>
+                    {% if pending_backups %}
+                        <div class="small fw-semibold mb-2">Backups pendentes</div>
+                        <div class="list-group list-group-flush mb-3">
+                            {% for media_file in pending_backups %}
+                                <div class="list-group-item px-0 py-2">
+                                    <div class="fw-semibold">{{ media_file.track.title|default:media_file.path }}</div>
+                                    <div class="text-secondary small text-break">{{ media_file.path }}</div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                    {% if cleanup_candidates %}
+                        <div class="small fw-semibold mb-2">Prontos para exclusao local</div>
+                        <div class="list-group list-group-flush">
+                            {% for media_file in cleanup_candidates %}
+                                <div class="list-group-item px-0 py-2">
+                                    <div class="fw-semibold">{{ media_file.track.title|default:media_file.path }}</div>
+                                    <div class="text-secondary small text-break">{{ media_file.path }}</div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card shadow-sm border-0 mt-4">
+                <div class="card-body">
                     <h2 class="h5 mb-3">Importacoes recentes</h2>
                     {% if recent_imports %}
                         <div class="list-group list-group-flush">

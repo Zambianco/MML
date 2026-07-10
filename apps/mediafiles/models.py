@@ -90,6 +90,12 @@ class MediaFile(models.Model):
         CONFIRMED = "confirmed", "Confirmed"
         FAILED = "failed", "Failed"
 
+    class TranscodeStatus(models.TextChoices):
+        PENDING = "pending", "Pending"
+        PROCESSING = "processing", "Processing"
+        COMPLETED = "completed", "Completed"
+        FAILED = "failed", "Failed"
+
     directory = models.ForeignKey(MonitoredDirectory, on_delete=models.PROTECT, related_name="media_files")
     track = models.ForeignKey("library.Track", on_delete=models.SET_NULL, related_name="media_files", blank=True, null=True)
     backup_target = models.ForeignKey("BackupTarget", on_delete=models.SET_NULL, related_name="media_files", blank=True, null=True)
@@ -100,6 +106,8 @@ class MediaFile(models.Model):
     audio_format = models.CharField(max_length=20, blank=True)
     origin_type = models.CharField(max_length=20, choices=OriginType.choices, default=OriginType.ORIGINAL)
     is_master = models.BooleanField(default=True)
+    transcode_status = models.CharField(max_length=20, choices=TranscodeStatus.choices, blank=True)
+    transcode_error = models.TextField(blank=True)
     original_backup_path = models.TextField(blank=True)
     original_backup_status = models.CharField(max_length=20, choices=BackupStatus.choices, blank=True)
     original_backup_sha256 = models.CharField(max_length=64, blank=True, db_index=True)

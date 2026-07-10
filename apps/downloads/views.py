@@ -22,6 +22,7 @@ from urllib.error import URLError
 
 from apps.core.audio import stream_audio_file
 from apps.mediafiles.models import MediaFile
+from apps.mediafiles.services import preferred_media_paths
 from apps.playback.models import FavoriteTrack
 from apps.scanner.services import AUDIO_EXTENSIONS, MutagenFile
 
@@ -142,7 +143,11 @@ def _downloaded_files() -> list[dict]:
             seen.add(resolved)
             discovered_files.append((root, resolved))
     persisted_metadata = _persisted_file_metadata([resolved for _, resolved in discovered_files])
+    preferred_paths = preferred_media_paths([resolved for _, resolved in discovered_files])
     for root, resolved in discovered_files:
+        preferred_path = preferred_paths.get(str(resolved))
+        if preferred_path and preferred_path != str(resolved):
+            continue
         stat = resolved.stat()
         relative_path = resolved.relative_to(root).as_posix()
         is_audio = resolved.suffix.lower() in AUDIO_EXTENSIONS

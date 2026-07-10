@@ -13,6 +13,7 @@ from django.utils import timezone
 
 from apps.library.models import Album, Artist, Track
 from apps.mediafiles.models import MediaFile, MonitoredDirectory
+from apps.mediafiles.tasks import transcode_media_file_task
 
 try:
     import acoustid
@@ -154,6 +155,15 @@ def scan_directory(directory: MonitoredDirectory) -> ScanResult:
             files_created += 1
         elif media_file.size_bytes == size_bytes:
             files_updated += 1
+
+        if import_status == MediaFile.ImportStatus.IMPORTED and metadata.audio_format == "flac":
+            media_file.transcode_status = MediaFile.TranscodeStatus.PENDING
+            media_file.transcode_error = ""
+            media_file.save(update_fields=["transcode_status", "transcode_error", "updated_at"])
+            try:
+                transcode_media_file_task.delay(media_file.id)
+            except Exception:
+                pass
 
     directory.last_scan_at = timezone.now()
     directory.save(update_fields=["last_scan_at", "updated_at"])

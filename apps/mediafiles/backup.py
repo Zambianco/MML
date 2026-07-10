@@ -9,6 +9,7 @@ from urllib.parse import quote
 from django.utils import timezone
 
 from .models import BackupTarget, MediaFile
+from .services import cleanup_ready_queryset
 
 try:
     import boto3
@@ -130,6 +131,8 @@ def build_backup_storage(target: BackupTarget) -> BaseBackupStorage:
 
 
 def backup_media_file(*, media_file: MediaFile, target: BackupTarget | None = None) -> BackupResult:
+    if media_file.origin_type != MediaFile.OriginType.ORIGINAL or media_file.audio_format != "flac":
+        raise BackupError("Somente FLACs originais entram no fluxo de backup.")
     backup_target = target or media_file.backup_target or BackupTarget.objects.filter(is_active=True, is_default=True).first()
     if backup_target is None:
         raise BackupError("Nenhum destino de backup padrao configurado.")
