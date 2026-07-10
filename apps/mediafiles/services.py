@@ -59,22 +59,44 @@ def preferred_media_paths(paths: list[Path]) -> dict[str, str]:
     if not paths:
         return {}
     path_strings = [str(path) for path in paths]
-    media_files = MediaFile.objects.filter(
-        Q(path__in=path_strings) | Q(source_path__in=path_strings) | Q(storage_path__in=path_strings),
-        track__isnull=False,
-    ).select_related("track")
+    path_lookup = set(path_strings)
+    media_files = list(
+        MediaFile.objects.filter(
+            Q(path__in=path_strings) | Q(source_path__in=path_strings) | Q(storage_path__in=path_strings),
+            track__isnull=False,
+        ).select_related("track")
+    )
     result: dict[str, str] = {}
-    track_ids = {media_file.track_id for media_file in media_files if media_file.track_id}
-    for track_id in track_ids:
-        preferred = preferred_media_file_for_track(track_id)
+    media_files_by_track: dict[int, list[MediaFile]] = {}
+    for media_file in media_files:
+        if media_file.track_id:
+            media_files_by_track.setdefault(media_file.track_id, []).append(media_file)
+    if not media_files_by_track:
+        return result
+
+    preferred_by_track: dict[int, MediaFile] = {}
+    fallback_by_track: dict[int, MediaFile] = {}
+    for candidate in MediaFile.objects.filter(track_id__in=media_files_by_track.keys()).order_by(
+        "track_id", "-updated_at"
+    ):
+        if not candidate.track_id:
+            continue
+        if candidate.origin_type == MediaFile.OriginType.DERIVED and candidate.audio_format == "opus":
+            preferred_by_track.setdefault(candidate.track_id, candidate)
+            continue
+        fallback = fallback_by_track.get(candidate.track_id)
+        if fallback is None or (candidate.is_master and not fallback.is_master):
+            fallback_by_track[candidate.track_id] = candidate
+
+    for track_id, track_media_files in media_files_by_track.items():
+        preferred = preferred_by_track.get(track_id) or fallback_by_track.get(track_id)
         if preferred is None:
             continue
         preferred_path = preferred.path or preferred.source_path
         if not preferred_path:
             continue
-        for media_file in media_files:
-            if media_file.track_id == track_id:
-                for candidate in (media_file.path, media_file.source_path, media_file.storage_path):
-                    if candidate and candidate in path_strings:
-                        result[candidate] = preferred_path
+        for media_file in track_media_files:
+            for candidate in (media_file.path, media_file.source_path, media_file.storage_path):
+                if candidate and candidate in path_lookup:
+                    result[candidate] = preferred_path
     return result

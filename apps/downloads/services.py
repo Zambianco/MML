@@ -95,7 +95,7 @@ def _slskd_request(method: str, path: str, payload=None):
             },
         )
         try:
-            with urlopen(request, timeout=30) as response:
+            with urlopen(request, timeout=settings.SLSKD_REQUEST_TIMEOUT_SECONDS) as response:
                 body = response.read()
                 return json.loads(body.decode("utf-8")) if body else None
         except URLError as exc:
@@ -356,12 +356,20 @@ def _slskd_item_status(state: str) -> str:
 
 
 def update_download_statuses(track_import: TrackImport, enqueue_next: bool = True) -> dict[str, int]:
-    downloads = _download_index()
     summary = {"updated": 0, "done": 0, "failed": 0, "queued_next": 0}
-    requested_sources = TrackImportItemSource.objects.filter(
-        item__track_import=track_import,
-        download_requested_at__isnull=False,
-    ).select_related("item").order_by("item_id", "rank", "-score")
+    requested_sources = list(
+        TrackImportItemSource.objects.filter(
+            item__track_import=track_import,
+            download_requested_at__isnull=False,
+        )
+        .exclude(item__status=TrackImportItem.STATUS_DONE)
+        .select_related("item")
+        .order_by("item_id", "rank", "-score")
+    )
+    if not requested_sources:
+        return summary
+
+    downloads = _download_index()
     source_updates: dict[int, list[tuple[TrackImportItemSource, dict | None, str, int, bool]]] = {}
 
     for source in requested_sources:

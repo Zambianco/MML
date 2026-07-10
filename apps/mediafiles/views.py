@@ -20,7 +20,7 @@ from .tasks import delete_local_flac_task, enqueue_pending_transcodes, start_bac
 
 def library_dashboard(request: HttpRequest) -> HttpResponse:
     try:
-        enqueue_pending_transcodes()
+        enqueue_pending_transcodes(limit=25)
     except Exception:
         pass
 

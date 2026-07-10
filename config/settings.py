@@ -31,6 +31,16 @@ def env_list(name: str, default: str = "") -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
+def env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "unsafe-development-key")
 DEBUG = env_bool("DJANGO_DEBUG", default=False)
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", default="127.0.0.1,localhost")
@@ -116,6 +126,7 @@ STATIC_URL = f"{URL_PREFIX}/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MUSIC_STORAGE_ROOT = Path(os.getenv("MUSIC_STORAGE_ROOT", "/music"))
 SLSKD_DOWNLOADS_DIR = Path(os.getenv("SLSKD_DOWNLOADS_DIR", str(MUSIC_STORAGE_ROOT)))
+DOWNLOADED_FILES_CACHE_SECONDS = env_float("DOWNLOADED_FILES_CACHE_SECONDS", 20.0)
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
@@ -123,6 +134,7 @@ CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/1")
 CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/2")
 CELERY_TASK_TRACK_STARTED = True
 SLSKD_BASE_URL = os.getenv("SLSKD_BASE_URL", "http://localhost:5030").rstrip("/")
+SLSKD_REQUEST_TIMEOUT_SECONDS = env_float("SLSKD_REQUEST_TIMEOUT_SECONDS", 5.0)
 SLSKD_API_KEY = os.getenv("SLSKD_API_KEY", "12345678901234567890")
 if SLSKD_API_KEY == "change-me":
     SLSKD_API_KEY = "12345678901234567890"

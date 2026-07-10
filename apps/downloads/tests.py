@@ -772,6 +772,22 @@ class DownloadImportTests(TestCase):
         self.assertContains(response, '<option value="Once" selected>', html=False)
 
     @patch("apps.downloads.services._slskd_request")
+    def test_update_download_statuses_skips_slskd_without_requested_sources(self, slskd_request):
+        track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
+        TrackImportItem.objects.create(
+            track_import=track_import,
+            row_number=1,
+            artists="Delain",
+            name="Lost",
+            search_query="Delain Lost",
+        )
+
+        summary = update_download_statuses(track_import, enqueue_next=False)
+
+        self.assertEqual(summary, {"updated": 0, "done": 0, "failed": 0, "queued_next": 0})
+        slskd_request.assert_not_called()
+
+    @patch("apps.downloads.services._slskd_request")
     def test_update_download_statuses_saves_completed_directory_path(self, slskd_request):
         track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
         item = TrackImportItem.objects.create(

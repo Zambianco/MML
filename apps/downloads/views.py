@@ -3,6 +3,7 @@ from datetime import datetime
 from datetime import timedelta
 from functools import lru_cache
 import mimetypes
+import time
 from threading import Thread
 from pathlib import Path
 from urllib.parse import urlencode
@@ -47,6 +48,8 @@ LOCAL_TASK_PREFIX = "local-download-round-"
 LOCAL_PROCESSING_TASKS: set[str] = set()
 LOCAL_COVER_NAMES = ("cover.jpg", "cover.jpeg", "cover.png", "cover.webp", "folder.jpg", "folder.jpeg", "folder.png", "album.jpg", "album.jpeg", "album.png")
 MOCK_AUDIO_DATA_URL = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA="
+DOWNLOADED_FILES_CACHE_SECONDS = 20
+_DOWNLOADED_FILES_CACHE: dict[tuple[str, ...], tuple[float, list[dict]]] = {}
 
 
 def _import_detail_url(track_import: TrackImport, *, page: str | None = None, querystring: str = "") -> str:
@@ -176,11 +179,35 @@ def _download_roots() -> list[Path]:
     return roots
 
 
+def _downloaded_files_cache_seconds() -> float:
+    return float(getattr(settings, "DOWNLOADED_FILES_CACHE_SECONDS", DOWNLOADED_FILES_CACHE_SECONDS) or 0)
+
+
+def _copy_file_rows(files: list[dict]) -> list[dict]:
+    return [file.copy() for file in files]
+
+
 def _downloaded_files() -> list[dict]:
+    roots = _download_roots()
+    cache_key = tuple(str(root) for root in roots)
+    cache_seconds = _downloaded_files_cache_seconds()
+    now = time.monotonic()
+    if cache_seconds > 0:
+        cached = _DOWNLOADED_FILES_CACHE.get(cache_key)
+        if cached and now - cached[0] <= cache_seconds:
+            return _copy_file_rows(cached[1])
+
+    files = _scan_downloaded_files(roots)
+    if cache_seconds > 0:
+        _DOWNLOADED_FILES_CACHE.clear()
+        _DOWNLOADED_FILES_CACHE[cache_key] = (now, _copy_file_rows(files))
+    return files
+
+
+def _scan_downloaded_files(roots: list[Path]) -> list[dict]:
     files: list[dict] = []
     discovered_files: list[tuple[Path, Path]] = []
     seen: set[Path] = set()
-    roots = _download_roots()
     for root in roots:
         for candidate in root.rglob("*"):
             if not candidate.is_file():
@@ -199,7 +226,7 @@ def _downloaded_files() -> list[dict]:
         stat = resolved.stat()
         relative_path = resolved.relative_to(root).as_posix()
         is_audio = resolved.suffix.lower() in AUDIO_EXTENSIONS
-        audio_metadata = _read_audio_display_metadata(resolved) if is_audio else {
+        audio_metadata = _cached_audio_display_metadata(str(resolved), stat.st_mtime_ns, stat.st_size) if is_audio else {
             "title": resolved.stem,
             "artist": "",
             "album": "",
@@ -338,6 +365,7 @@ def _persisted_file_metadata(paths: list[Path]) -> dict[str, dict[str, str]]:
     if not paths:
         return {}
     path_strings = [str(path) for path in paths]
+    path_lookup = set(path_strings)
     media_files = (
         MediaFile.objects.filter(
             Q(path__in=path_strings) | Q(source_path__in=path_strings) | Q(storage_path__in=path_strings),
@@ -357,12 +385,17 @@ def _persisted_file_metadata(paths: list[Path]) -> dict[str, dict[str, str]]:
             "year": str(track.album.release_date.year) if track.album and track.album.release_date else "",
         }
         for candidate in (media_file.path, media_file.source_path, media_file.storage_path):
-            if candidate and candidate in path_strings:
+            if candidate and candidate in path_lookup:
                 metadata_by_path[candidate] = metadata
     return metadata_by_path
 
 
-def _read_audio_display_metadata(path: Path) -> dict[str, str]:
+@lru_cache(maxsize=4096)
+def _cached_audio_display_metadata(path: str, modified_ns: int, size: int) -> dict:
+    return _read_audio_display_metadata(Path(path))
+
+
+def _read_audio_display_metadata(path: Path) -> dict:
     fallback = {
         "title": path.stem,
         "artist": "Artista desconhecido",
@@ -608,7 +641,7 @@ def _import_detail_context(
     refresh_status: bool = False,
     filters: dict[str, str] | None = None,
 ) -> dict:
-    track_import = TrackImport.objects.prefetch_related("items__sources").get(pk=track_import.pk)
+    track_import = TrackImport.objects.get(pk=track_import.pk)
     if refresh_status:
         try:
             update_download_statuses(track_import, enqueue_next=False)
@@ -616,7 +649,7 @@ def _import_detail_context(
             if request is not None:
                 messages.error(request, f"Nao foi possivel conectar ao slskd: {exc.reason}")
         else:
-            track_import = TrackImport.objects.prefetch_related("items__sources").get(pk=track_import.pk)
+            track_import = TrackImport.objects.get(pk=track_import.pk)
     status_counts = dict(track_import.items.values_list("status").annotate(total=Count("id")))
     queue_remaining_count = (
         status_counts.get(TrackImportItem.STATUS_PENDING, 0)
@@ -625,13 +658,14 @@ def _import_detail_context(
     )
     filters = filters or {"q": "", "status": "", "downloaded": "", "search_attempts": ""}
     items = _filter_import_items(
-        track_import.items.prefetch_related("sources").all(),
+        track_import.items.all(),
         query=filters["q"],
         status=filters["status"],
         downloaded=filters["downloaded"],
         search_attempts=filters["search_attempts"],
     )
     page_obj = Paginator(items, ITEMS_PER_PAGE).get_page(page)
+    page_obj.object_list = list(page_obj.object_list.prefetch_related("sources"))
     query_params = {key: value for key, value in filters.items() if value}
     querystring = urlencode(query_params)
     return {
