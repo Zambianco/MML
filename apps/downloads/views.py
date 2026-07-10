@@ -151,11 +151,7 @@ def _refresh_processing_state(track_import: TrackImport) -> None:
 
     started_at = track_import.processing_started_at or timezone.now()
     task_id = track_import.processing_task_id
-    if not _has_active_search(track_import):
-        local_task_missing = bool(task_id and task_id.startswith(LOCAL_TASK_PREFIX) and task_id not in LOCAL_PROCESSING_TASKS)
-        if local_task_missing and timezone.now() - started_at >= PROCESSING_NO_SEARCH_GRACE:
-            _mark_processing_finished(track_import)
-        return
+    has_active = _has_active_search(track_import)
 
     if not task_id:
         if timezone.now() - started_at >= PROCESSING_STALE_AFTER:
@@ -163,10 +159,17 @@ def _refresh_processing_state(track_import: TrackImport) -> None:
         return
 
     if task_id.startswith(LOCAL_TASK_PREFIX):
-        if task_id in LOCAL_PROCESSING_TASKS:
-            return
-        if timezone.now() - started_at >= PROCESSING_STALE_AFTER:
-            _mark_processing_finished(track_import)
+        if task_id not in LOCAL_PROCESSING_TASKS:
+            if not has_active and timezone.now() - started_at >= PROCESSING_NO_SEARCH_GRACE:
+                _mark_processing_finished(track_import)
+            elif has_active and timezone.now() - started_at >= PROCESSING_STALE_AFTER:
+                _mark_processing_finished(track_import)
+        else:
+            if timezone.now() - started_at >= PROCESSING_STALE_AFTER:
+                _mark_processing_finished(track_import)
+        return
+
+    if not has_active and timezone.now() - started_at < PROCESSING_NO_SEARCH_GRACE:
         return
 
     try:
@@ -183,7 +186,15 @@ def _refresh_processing_state(track_import: TrackImport) -> None:
         _mark_processing_finished(track_import, error=error)
         return
 
-    if task_state == PENDING and timezone.now() - started_at >= PROCESSING_STALE_AFTER and not _celery_workers_available():
+    if task_state == PENDING:
+        if not _celery_workers_available():
+            _mark_processing_finished(track_import, error="Nenhum worker Celery disponivel.")
+            return
+        if not has_active and timezone.now() - started_at >= PROCESSING_NO_SEARCH_GRACE * 2:
+            _mark_processing_finished(track_import, error="A tarefa na fila do Celery demorou muito para iniciar.")
+            return
+
+    if timezone.now() - started_at >= PROCESSING_STALE_AFTER:
         _mark_processing_finished(track_import)
 
 
