@@ -118,6 +118,7 @@ def _start_local_process_round(track_import: TrackImport, limit: int) -> None:
     task_id = f"{LOCAL_TASK_PREFIX}{uuid4().hex}"
     track_import.processing_task_id = task_id
     track_import.save(update_fields=["processing_task_id"])
+    LOCAL_PROCESSING_TASKS.add(task_id)
     thread = Thread(
         target=_run_local_process_round,
         args=(track_import.pk, limit, task_id),

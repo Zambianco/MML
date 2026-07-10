@@ -281,6 +281,30 @@ class DownloadImportTests(TestCase):
         self.assertEqual(track_import.processing_last_error, "")
         self.assertTrue(track_import.is_processing)
 
+    @patch("apps.downloads.views.Thread")
+    @patch("apps.downloads.views._celery_workers_available", return_value=False)
+    def test_process_round_keeps_new_local_task_processing_until_thread_runs(self, _workers_available, thread_class):
+        track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
+        TrackImportItem.objects.create(
+            track_import=track_import,
+            row_number=1,
+            artists="Dio",
+            name="Holy Diver",
+            search_query="Dio Holy Diver",
+        )
+
+        response = self.client.post(
+            reverse("downloads-process-round", args=[track_import.pk]),
+            {"limit": "5"},
+            HTTP_HOST="localhost",
+        )
+
+        self.assertRedirects(response, reverse("downloads-import-detail", args=[track_import.pk]))
+        thread_class.return_value.start.assert_called_once()
+        track_import.refresh_from_db()
+        self.assertTrue(track_import.is_processing)
+        self.assertTrue(track_import.processing_task_id.startswith("local-download-round-"))
+
     def test_import_detail_releases_processing_without_active_search(self):
         track_import = TrackImport.objects.create(
             source_name="downloads.csv",
