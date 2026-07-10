@@ -160,9 +160,9 @@ def scan_directory(directory: MonitoredDirectory) -> ScanResult:
             media_file.transcode_error = ""
             media_file.save(update_fields=["transcode_status", "transcode_error", "updated_at"])
             try:
-                from apps.mediafiles.tasks import transcode_media_file_task
+                from apps.mediafiles.tasks import enqueue_pending_transcodes
 
-                transcode_media_file_task.delay(media_file.id)
+                enqueue_pending_transcodes(limit=1)
             except Exception:
                 pass
 

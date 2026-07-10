@@ -1,8 +1,10 @@
 from pathlib import Path
 import os
+import sys
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+TESTING = "test" in sys.argv
 
 
 def load_env_file() -> None:

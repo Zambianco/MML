@@ -41,6 +41,7 @@ def cleanup_ready_queryset() -> QuerySet[MediaFile]:
             origin_type=MediaFile.OriginType.ORIGINAL,
             audio_format="flac",
             original_backup_status=MediaFile.BackupStatus.CONFIRMED,
+            local_deleted_at__isnull=True,
         )
         .annotate(has_opus=Exists(derived_opus))
         .filter(has_opus=True)

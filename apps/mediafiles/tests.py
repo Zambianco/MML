@@ -89,10 +89,12 @@ class LibraryDashboardTests(TestCase):
             audio_path.write_bytes(b"audio")
             MonitoredDirectory.objects.create(name="Local", path=str(root))
 
-            response = self.client.post(reverse("scan-directories"), HTTP_HOST="localhost")
+            with patch("apps.mediafiles.views.scan_monitored_directories_task.delay") as delay_mock:
+                response = self.client.post(reverse("scan-directories"), HTTP_HOST="localhost")
 
         self.assertRedirects(response, reverse("library-dashboard"))
-        self.assertTrue(MediaFile.objects.filter(source_path=str(audio_path)).exists())
+        delay_mock.assert_called_once_with()
+        self.assertFalse(MediaFile.objects.filter(source_path=str(audio_path)).exists())
 
     def test_media_file_stream_serves_audio_inline(self):
         with TemporaryDirectory() as temp_dir:

@@ -9,16 +9,21 @@ from django.views.decorators.http import require_POST
 
 from apps.core.audio import stream_audio_file
 from apps.library.models import Album, Artist, Track
-from apps.scanner.services import scan_monitored_directories
+from apps.scanner.tasks import scan_monitored_directories_task
 
 from .backup import pending_backup_queryset
 from .forms import BackupTargetForm, MonitoredDirectoryForm
 from .models import BackupTarget, MediaFile, MonitoredDirectory
 from .services import cleanup_ready_queryset, preferred_media_file_for_track
-from .tasks import backup_media_file_task, delete_local_flac_task
+from .tasks import backup_media_file_task, delete_local_flac_task, enqueue_pending_transcodes
 
 
 def library_dashboard(request: HttpRequest) -> HttpResponse:
+    try:
+        enqueue_pending_transcodes()
+    except Exception:
+        pass
+
     form = MonitoredDirectoryForm()
     backup_target_form = BackupTargetForm()
     directories = MonitoredDirectory.objects.all()
@@ -86,16 +91,11 @@ def create_backup_target(request: HttpRequest) -> HttpResponse:
 
 @require_POST
 def scan_directories(request: HttpRequest) -> HttpResponse:
-    result = scan_monitored_directories()
-    messages.success(
-        request,
-        (
-            f"Scan concluido: {result.directories_scanned} diretorios, "
-            f"{result.files_seen} arquivos de audio, {result.files_created} novos."
-        ),
-    )
-    if result.missing_directories:
-        messages.warning(request, f"{result.missing_directories} diretorio(s) nao encontrado(s).")
+    try:
+        scan_monitored_directories_task.delay()
+        messages.success(request, "Atualizacao do acervo enviada para o Celery.")
+    except Exception:
+        messages.error(request, "Nao foi possivel enviar a atualizacao do acervo para o Celery.")
     return redirect(reverse("library-dashboard"))
 
 

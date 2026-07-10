@@ -907,6 +907,24 @@
 
             <div class="playlist-filters" id="playlist-filters">
                 <button class="playlist-filter" id="favorites-filter" type="button">Favoritos</button>
+                <form class="d-grid gap-2 mt-3" method="get">
+                    <select class="form-select form-select-sm" name="artist" aria-label="Filtrar por artista">
+                        <option value="">Todos os artistas</option>
+                        {% for current_artist in artists %}
+                            <option value="{{ current_artist }}"{% if selected_artist == current_artist %} selected{% endif %}>{{ current_artist }}</option>
+                        {% endfor %}
+                    </select>
+                    <select class="form-select form-select-sm" name="album" aria-label="Filtrar por album">
+                        <option value="">Todos os albuns</option>
+                        {% for current_album in albums %}
+                            <option value="{{ current_album }}"{% if selected_album == current_album %} selected{% endif %}>{{ current_album }}</option>
+                        {% endfor %}
+                    </select>
+                    <input type="hidden" name="q" value="{{ query }}">
+                    <input type="hidden" name="ext" value="{{ selected_extension }}">
+                    <input type="hidden" name="root" value="{{ selected_root }}">
+                    <button class="btn btn-outline-secondary btn-sm" type="submit">Aplicar filtros</button>
+                </form>
             </div>
 
             {% if files %}

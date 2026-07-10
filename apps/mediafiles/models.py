@@ -112,6 +112,7 @@ class MediaFile(models.Model):
     original_backup_status = models.CharField(max_length=20, choices=BackupStatus.choices, blank=True)
     original_backup_sha256 = models.CharField(max_length=64, blank=True, db_index=True)
     original_backed_up_at = models.DateTimeField(blank=True, null=True)
+    local_deleted_at = models.DateTimeField(blank=True, null=True)
     size_bytes = models.PositiveBigIntegerField(blank=True, null=True)
     mime_type = models.CharField(max_length=120, blank=True)
     checksum = models.CharField(max_length=128, blank=True, db_index=True)
