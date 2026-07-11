@@ -46,6 +46,8 @@ class LoginRequiredMiddleware:
             "/health/",
             "/login/",
             "/logout/",
+            "/manifest.webmanifest",
+            "/service-worker.js",
         }
         self.public_prefixes = ("/admin/", "/static/")
 
