@@ -4,33 +4,35 @@
 
 {% block content %}
 <main class="container app-page py-4">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <div class="app-page-header">
         <div>
             <p class="page-kicker mb-1">Downloads</p>
             <h1 class="h3 mb-0 fw-bold">Arquivos baixados</h1>
-            <p class="text-secondary small mt-1 mb-0">Visao direta do que existe no disco do sistema.</p>
-        </div>
-        <div class="d-flex gap-2 flex-wrap">
-            <a class="btn btn-dark btn-sm" href="{% url 'downloads-player' %}">Player</a>
-            <a class="btn btn-outline-dark btn-sm" href="{% url 'downloads-import-list' %}">Importacoes</a>
+            <p class="text-secondary small mt-1 mb-0">Auditoria limpa dos arquivos locais, com filtros e revisao de metadados.</p>
         </div>
     </div>
 
     <div class="row g-3 mb-4">
         <div class="col-md-4">
             <div class="card shadow-sm border-0 h-100">
-                <div class="card-body">
-                    <div class="text-secondary small">Arquivos encontrados</div>
-                    <div class="display-6">{{ file_count }}</div>
+                <div class="app-stat">
+                    <div class="app-stat-label">Arquivos encontrados</div>
+                    <div class="app-stat-value">{{ file_count }}</div>
                     {% if all_file_count != file_count %}
                         <div class="small text-secondary">de {{ all_file_count }} total(is)</div>
                     {% endif %}
-                    <div class="small text-secondary mt-3">Com metadados ausentes</div>
-                    <div class="h4 mb-0">{{ missing_metadata_count }}</div>
                 </div>
             </div>
         </div>
-        <div class="col-md-8">
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="app-stat">
+                    <div class="app-stat-label">Sem metadados</div>
+                    <div class="app-stat-value">{{ missing_metadata_count }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-5">
             <div class="card shadow-sm border-0 h-100">
                 <div class="card-body">
                     <div class="text-secondary small mb-2">Pastas verificadas</div>
@@ -47,6 +49,15 @@
             </div>
         </div>
     </div>
+
+    <ul class="nav section-tabs mb-4">
+        <li class="nav-item">
+            <a class="nav-link {% if not selected_missing_metadata %}active{% endif %}" href="{% url 'downloads-files' %}">Todos</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if selected_missing_metadata %}active{% endif %}" href="{% url 'downloads-files' %}?missing_metadata=1">Sem metadados</a>
+        </li>
+    </ul>
 
     <div class="card shadow-sm border-0 mb-4">
         <div class="card-body">
@@ -90,7 +101,7 @@
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
                 <h2 class="h5 mb-0">Conteudo</h2>
-                <div class="small text-secondary">Formato de pasta simples</div>
+                <div class="small text-secondary">Lista compacta</div>
             </div>
             {% if files %}
                 <div class="table-responsive">
@@ -110,7 +121,7 @@
                                 <tr>
                                     <td class="text-break">
                                         <i class="bi bi-file-earmark-music me-2 text-secondary"></i>{{ file.relative_path }}
-                                        <audio class="w-100 mt-2" controls preload="none" src="{{ file.stream_url }}"></audio>
+                                        <audio class="w-100 mt-2 audio-inline" controls preload="none" src="{{ file.stream_url }}"></audio>
                                     </td>
                                     <td class="text-break">{{ file.name }}</td>
                                     <td class="text-break small">

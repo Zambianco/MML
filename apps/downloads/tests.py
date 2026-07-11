@@ -1440,7 +1440,7 @@ class DownloadImportTests(TestCase):
         self.assertEqual(processed_items, [item_2.pk, item_3.pk, item_1.pk])
 
     @patch("apps.downloads.services.search_slskd_sources")
-    def test_process_round_marks_item_error_when_search_fails(self, search_slskd_sources):
+    def test_process_round_marks_item_error_and_continues_when_search_fails(self, search_slskd_sources):
         search_slskd_sources.side_effect = URLError("offline")
         track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
         item = TrackImportItem.objects.create(
@@ -1452,11 +1452,12 @@ class DownloadImportTests(TestCase):
             status=TrackImportItem.STATUS_SEARCHING,
         )
 
-        with self.assertRaises(URLError):
-            process_download_round(track_import, limit=1)
+        summary = process_download_round(track_import, limit=1)
 
         item.refresh_from_db()
         self.assertEqual(item.status, TrackImportItem.STATUS_ERROR)
+        self.assertEqual(item.last_error, "Falha ao buscar no slskd: <urlopen error offline>")
+        self.assertEqual(summary, {"searched": 0, "queued": 0, "without_source": 1, "cancelled": 0})
 
     @patch("apps.downloads.services.time.sleep")
     @patch("apps.downloads.services.update_download_statuses")

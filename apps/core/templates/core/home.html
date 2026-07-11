@@ -2,583 +2,73 @@
 
 {% block title %}My Music Library{% endblock %}
 
-{% block body_class %}landing-page{% endblock %}
-
 {% block extra_head %}
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
-<style>
-    :root {
-        --bg-primary: #0f0a0a;
-        --bg-secondary: #1a1313;
-        --bg-card: #1e1616;
-        --bg-card-hover: #2a1f1f;
-        --text-primary: #f0e6e0;
-        --text-secondary: #b8aaa4;
-        --text-muted: #7a6b66;
-        --accent-gold: #d4a373;
-        --accent-gold-dim: rgba(212, 163, 115, 0.15);
-        --border-subtle: rgba(255, 255, 255, 0.06);
-        --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.5);
-    }
-
-    body.landing-page {
-        font-family: "Inter", sans-serif;
-        background: var(--bg-primary);
-        color: var(--text-primary);
-        min-height: 100vh;
-        overflow-x: hidden;
-        padding-bottom: 6.5rem;
-    }
-
-    body.landing-page .navbar {
-        background: rgba(15, 10, 10, 0.85) !important;
-        backdrop-filter: blur(20px);
-        border-bottom-color: var(--border-subtle) !important;
-    }
-
-    body.landing-page .navbar .navbar-text {
-        color: var(--text-secondary) !important;
-    }
-
-    body.landing-page .navbar .btn-outline-dark {
-        color: var(--text-secondary);
-        border-color: var(--border-subtle);
-        background: transparent;
-    }
-
-    body.landing-page .navbar .btn-outline-dark:hover {
-        color: #e74c3c;
-        border-color: rgba(231, 76, 60, 0.28);
-        background: rgba(231, 76, 60, 0.08);
-    }
-
-    .bg-glow,
-    .bg-glow-2 {
-        position: fixed;
-        pointer-events: none;
-        z-index: 0;
-    }
-
-    .bg-glow {
-        top: -30%;
-        right: -20%;
-        width: 70%;
-        height: 70%;
-        background: radial-gradient(ellipse, rgba(212, 163, 115, 0.08), transparent 70%);
-    }
-
-    .bg-glow-2 {
-        bottom: -40%;
-        left: -20%;
-        width: 60%;
-        height: 60%;
-        background: radial-gradient(ellipse, rgba(180, 80, 60, 0.05), transparent 70%);
-    }
-
-    .hero-section,
-    .library-strip {
-        position: relative;
-        z-index: 1;
-    }
-
-    .hero-section {
-        padding: 4rem 0 3rem;
-        text-align: center;
-    }
-
-    .badge-now {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.35rem 1.2rem;
-        border-radius: 999px;
-        background: var(--accent-gold-dim);
-        color: var(--accent-gold);
-        font-size: 0.75rem;
-        font-weight: 600;
-        letter-spacing: 0.5px;
-        text-transform: uppercase;
-        margin-bottom: 1.5rem;
-        border: 1px solid rgba(212, 163, 115, 0.2);
-    }
-
-    .badge-now i {
-        font-size: 0.6rem;
-        animation: pulse-dot 1.5s ease-in-out infinite;
-    }
-
-    @keyframes pulse-dot {
-        0%, 100% { opacity: 1; transform: scale(1); }
-        50% { opacity: 0.3; transform: scale(0.8); }
-    }
-
-    .hero-title {
-        font-size: clamp(2.7rem, 6vw, 4.8rem);
-        font-weight: 700;
-        letter-spacing: -2px;
-        line-height: 1.03;
-        margin-bottom: 0.9rem;
-    }
-
-    .hero-title .highlight {
-        background: linear-gradient(135deg, var(--accent-gold), #e8c9a0);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-    }
-
-    .hero-copy {
-        max-width: 620px;
-        margin: 0 auto 2rem;
-        color: var(--text-secondary);
-        font-size: 1.08rem;
-        line-height: 1.7;
-    }
-
-    .hero-actions {
-        display: flex;
-        gap: 1rem;
-        justify-content: center;
-        flex-wrap: wrap;
-    }
-
-    .hero-actions .btn {
-        padding: 0.78rem 2rem;
-        border-radius: 999px;
-        font-weight: 600;
-        font-size: 0.95rem;
-        transition: all 0.25s;
-    }
-
-    .btn-primary-music {
-        background: var(--accent-gold);
-        color: #0f0a0a;
-        border: none;
-    }
-
-    .btn-primary-music:hover {
-        background: #e8c9a0;
-        color: #0f0a0a;
-        transform: translateY(-2px);
-        box-shadow: 0 8px 30px rgba(212, 163, 115, 0.3);
-    }
-
-    .btn-secondary-music {
-        background: rgba(255, 255, 255, 0.06);
-        color: var(--text-primary);
-        border: 1px solid var(--border-subtle);
-    }
-
-    .btn-secondary-music:hover {
-        background: rgba(255, 255, 255, 0.12);
-        color: var(--text-primary);
-        transform: translateY(-2px);
-    }
-
-    .section-label {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 1.5rem;
-    }
-
-    .section-label h2 {
-        font-size: 1.3rem;
-        font-weight: 600;
-        letter-spacing: -0.3px;
-        margin: 0;
-    }
-
-    .section-label .see-all {
-        color: var(--text-muted);
-        font-size: 0.85rem;
-        text-decoration: none;
-        transition: color 0.2s;
-    }
-
-    .section-label .see-all:hover {
-        color: var(--accent-gold);
-    }
-
-    .albums-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-        gap: 1.5rem;
-    }
-
-    .album-card {
-        display: block;
-        color: inherit;
-        text-decoration: none;
-        background: var(--bg-card);
-        border-radius: 14px;
-        padding: 1rem 1rem 1.2rem;
-        transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-        border: 1px solid transparent;
-        position: relative;
-    }
-
-    .album-card:hover {
-        color: inherit;
-        background: var(--bg-card-hover);
-        transform: translateY(-6px);
-        border-color: rgba(212, 163, 115, 0.2);
-        box-shadow: var(--shadow-card);
-    }
-
-    .cover {
-        width: 100%;
-        aspect-ratio: 1;
-        border-radius: 10px;
-        margin-bottom: 0.8rem;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        position: relative;
-        overflow: hidden;
-    }
-
-    .cover::after {
-        content: "";
-        position: absolute;
-        inset: 12% 12%;
-        border-radius: 50%;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-    }
-
-    .cover-library { background: linear-gradient(135deg, #2a1f1f, #1a1313); }
-    .cover-imports { background: linear-gradient(135deg, #1a2a3a, #0d1a26); }
-    .cover-api { background: linear-gradient(135deg, #2d1b3d, #1a0f24); }
-    .cover-admin { background: linear-gradient(135deg, #3d2a1a, #1f140d); }
-
-    .placeholder-icon {
-        font-size: 2.8rem;
-        color: rgba(255, 255, 255, 0.14);
-        position: relative;
-        z-index: 1;
-    }
-
-    .play-overlay {
-        position: absolute;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.5);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        opacity: 0;
-        transition: opacity 0.3s;
-    }
-
-    .album-card:hover .play-overlay {
-        opacity: 1;
-    }
-
-    .play-overlay i {
-        font-size: 2.4rem;
-        color: var(--accent-gold);
-        filter: drop-shadow(0 4px 20px rgba(212, 163, 115, 0.4));
-    }
-
-    .album-year {
-        color: var(--text-muted);
-        font-size: 0.7rem;
-        position: absolute;
-        top: 1rem;
-        right: 1rem;
-        background: rgba(0, 0, 0, 0.6);
-        padding: 0.15rem 0.6rem;
-        border-radius: 999px;
-        backdrop-filter: blur(4px);
-    }
-
-    .album-title {
-        font-weight: 600;
-        font-size: 0.95rem;
-        margin-bottom: 0.15rem;
-    }
-
-    .album-artist {
-        color: var(--text-muted);
-        font-size: 0.8rem;
-    }
-
-    .mini-player {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        z-index: 50;
-        display: flex;
-        align-items: center;
-        gap: 1.5rem;
-        padding: 0.8rem 1.5rem;
-        background: rgba(15, 10, 10, 0.95);
-        backdrop-filter: blur(24px);
-        border-top: 1px solid var(--border-subtle);
-    }
-
-    .track-info {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-        min-width: 220px;
-    }
-
-    .mini-cover {
-        width: 44px;
-        height: 44px;
-        border-radius: 6px;
-        background: linear-gradient(135deg, #2a1f1f, #1a1313);
-        flex-shrink: 0;
-    }
-
-    .track-name {
-        font-size: 0.85rem;
-        font-weight: 500;
-    }
-
-    .track-artist {
-        font-size: 0.7rem;
-        color: var(--text-muted);
-    }
-
-    .player-controls {
-        display: flex;
-        align-items: center;
-        gap: 1.2rem;
-        flex: 1;
-        justify-content: center;
-    }
-
-    .player-controls button {
-        background: transparent;
-        border: none;
-        color: var(--text-secondary);
-        font-size: 1rem;
-        padding: 0.3rem;
-    }
-
-    .player-controls .play-btn {
-        width: 38px;
-        height: 38px;
-        border-radius: 50%;
-        background: var(--accent-gold);
-        color: #0f0a0a;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 0.9rem;
-    }
-
-    .progress-bar {
-        flex: 1;
-        max-width: 400px;
-        height: 3px;
-        background: rgba(255, 255, 255, 0.1);
-        border-radius: 999px;
-    }
-
-    .progress-fill {
-        width: 42%;
-        height: 100%;
-        background: linear-gradient(90deg, var(--accent-gold), #e8c9a0);
-        border-radius: 999px;
-    }
-
-    .time {
-        font-size: 0.7rem;
-        color: var(--text-muted);
-        font-variant-numeric: tabular-nums;
-    }
-
-    .volume-control {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        color: var(--text-muted);
-    }
-
-    .vol-bar {
-        width: 60px;
-        height: 3px;
-        background: rgba(255, 255, 255, 0.1);
-        border-radius: 999px;
-    }
-
-    .vol-fill {
-        width: 70%;
-        height: 100%;
-        background: var(--text-secondary);
-        border-radius: 999px;
-    }
-
-    @media (max-width: 768px) {
-        body.landing-page {
-            padding-bottom: 8rem;
-        }
-
-        .hero-section {
-            padding-top: 2.75rem;
-        }
-
-        .albums-grid {
-            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-            gap: 1rem;
-        }
-
-        .mini-player {
-            flex-wrap: wrap;
-            padding: 0.6rem 1rem;
-            gap: 0.8rem;
-        }
-
-        .track-info {
-            min-width: unset;
-            flex: 1;
-        }
-
-        .player-controls {
-            order: 3;
-            flex: 1 1 100%;
-            gap: 0.8rem;
-        }
-
-        .progress-bar {
-            max-width: unset;
-            flex: 1;
-        }
-
-        .volume-control {
-            display: none;
-        }
-    }
-
-    @media (max-width: 480px) {
-        .albums-grid {
-            grid-template-columns: repeat(2, 1fr);
-            gap: 0.8rem;
-        }
-
-        .album-card {
-            padding: 0.7rem;
-        }
-
-        .album-title {
-            font-size: 0.8rem;
-        }
-    }
-</style>
 {% endblock %}
 
 {% block content %}
-<div class="bg-glow"></div>
-<div class="bg-glow-2"></div>
-
-<section class="hero-section">
-    <div class="container">
-        <div class="badge-now">
-            <i class="fas fa-circle"></i>
-            Agora tocando · colecao em movimento
-        </div>
-        <h1 class="hero-title">
-            Sua biblioteca<br>
-            <span class="highlight">com cara de audio</span>
-        </h1>
-        <p class="hero-copy">
-            {{ project_summary }} Organize diretorios, importe catalogos e navegue pelo acervo
-            com uma entrada mais proxima de player, colecao e descoberta.
-        </p>
-        <div class="hero-actions">
-            <a class="btn btn-primary-music" href="{% url 'library-dashboard' %}">
-                <i class="fas fa-play me-2"></i>Abrir biblioteca
-            </a>
-            <a class="btn btn-secondary-music" href="{% url 'downloads-import-list' %}">
-                <i class="fas fa-upload me-2"></i>Importar faixas
-            </a>
-        </div>
-    </div>
-</section>
-
-<section class="library-strip pb-5">
-    <div class="container">
-        <div class="section-label">
-            <h2><i class="fas fa-compact-disc me-2" style="color: var(--accent-gold);"></i>Entradas da colecao</h2>
-            <a class="see-all" href="{% url 'library-dashboard' %}">Ver acervo →</a>
-        </div>
-
-        <div class="albums-grid">
-            <a class="album-card" href="{% url 'library-dashboard' %}">
-                <div class="cover cover-library">
-                    <div class="placeholder-icon"><i class="fas fa-record-vinyl"></i></div>
-                    <div class="play-overlay"><i class="fas fa-play-circle"></i></div>
-                    <span class="album-year">scan</span>
-                </div>
-                <div class="album-title">Biblioteca</div>
-                <div class="album-artist">Diretorios, indexacao e descoberta local</div>
-            </a>
-
-            <a class="album-card" href="{% url 'downloads-import-list' %}">
-                <div class="cover cover-imports">
-                    <div class="placeholder-icon"><i class="fas fa-file-import"></i></div>
-                    <div class="play-overlay"><i class="fas fa-play-circle"></i></div>
-                    <span class="album-year">csv</span>
-                </div>
-                <div class="album-title">Imports</div>
-                <div class="album-artist">Suba lotes e acompanhe o historico</div>
-            </a>
-
-            <a class="album-card" href="{% url 'api-index' %}">
-                <div class="cover cover-api">
-                    <div class="placeholder-icon"><i class="fas fa-wave-square"></i></div>
-                    <div class="play-overlay"><i class="fas fa-play-circle"></i></div>
-                    <span class="album-year">api</span>
-                </div>
-                <div class="album-title">API</div>
-                <div class="album-artist">Automacoes, integracoes e consumo externo</div>
-            </a>
-
-            <a class="album-card" href="{% url 'admin:index' %}">
-                <div class="cover cover-admin">
-                    <div class="placeholder-icon"><i class="fas fa-sliders"></i></div>
-                    <div class="play-overlay"><i class="fas fa-play-circle"></i></div>
-                    <span class="album-year">ops</span>
-                </div>
-                <div class="album-title">Admin</div>
-                <div class="album-artist">Bastidor tecnico e manutencao do sistema</div>
-            </a>
-        </div>
-    </div>
-</section>
-
-<div class="mini-player" aria-hidden="true">
-    <div class="track-info">
-        <div class="mini-cover"></div>
+<main class="container app-page py-4">
+    <div class="app-page-header">
         <div>
-            <div class="track-name">My Music Library</div>
-            <div class="track-artist">Biblioteca, imports e operacao</div>
+            <p class="page-kicker mb-1">My Music Library</p>
+            <h1 class="h3 mb-0 fw-bold">Painel</h1>
+            <p class="text-secondary small mt-1 mb-0">{{ project_summary }}</p>
         </div>
-        <i class="far fa-heart" style="color: var(--text-muted);"></i>
+        <a class="btn btn-dark" href="{% url 'downloads-player' %}">
+            <i class="fas fa-play me-2"></i>Abrir player
+        </a>
     </div>
 
-    <div class="player-controls">
-        <button type="button"><i class="fas fa-step-backward"></i></button>
-        <button class="play-btn" type="button"><i class="fas fa-play"></i></button>
-        <button type="button"><i class="fas fa-step-forward"></i></button>
-    </div>
-
-    <span class="time">1:24</span>
-    <div class="progress-bar">
-        <div class="progress-fill"></div>
-    </div>
-    <span class="time">4:38</span>
-
-    <div class="volume-control">
-        <i class="fas fa-volume-up"></i>
-        <div class="vol-bar">
-            <div class="vol-fill"></div>
+    <div class="row g-3 mb-4">
+        <div class="col-md-6 col-xl-3">
+            <a class="card shadow-sm border-0 h-100 text-decoration-none" href="{% url 'downloads-player' %}">
+                <div class="app-stat">
+                    <div class="app-stat-label">Reproducao</div>
+                    <div class="h5 mt-2 mb-2 text-light">Player</div>
+                    <div class="small text-secondary">Ouvir, buscar, filtrar e favoritar faixas locais.</div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-6 col-xl-3">
+            <a class="card shadow-sm border-0 h-100 text-decoration-none" href="{% url 'library-dashboard' %}">
+                <div class="app-stat">
+                    <div class="app-stat-label">Acervo</div>
+                    <div class="h5 mt-2 mb-2 text-light">Biblioteca</div>
+                    <div class="small text-secondary">Fontes, scanner, metadados e pipeline de audio.</div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-6 col-xl-3">
+            <a class="card shadow-sm border-0 h-100 text-decoration-none" href="{% url 'downloads-files' %}">
+                <div class="app-stat">
+                    <div class="app-stat-label">Disco</div>
+                    <div class="h5 mt-2 mb-2 text-light">Arquivos</div>
+                    <div class="small text-secondary">Auditoria dos downloads e revisao de metadados.</div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-6 col-xl-3">
+            <a class="card shadow-sm border-0 h-100 text-decoration-none" href="{% url 'downloads-import-list' %}">
+                <div class="app-stat">
+                    <div class="app-stat-label">Carga</div>
+                    <div class="h5 mt-2 mb-2 text-light">Importacoes</div>
+                    <div class="small text-secondary">CSV, historico e acompanhamento da fila.</div>
+                </div>
+            </a>
         </div>
     </div>
-</div>
+
+    <div class="dashboard-panel">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+            <div>
+                <h2 class="h5 mb-1">Fluxo principal</h2>
+                <p class="text-secondary small mb-0">Importe CSVs, acompanhe downloads, revise arquivos e use o player como interface de consumo.</p>
+            </div>
+            <div class="d-flex gap-2 flex-wrap">
+                <a class="btn btn-outline-dark btn-sm" href="{% url 'downloads-import-list' %}">Importar CSV</a>
+                <a class="btn btn-outline-dark btn-sm" href="{% url 'downloads-files' %}">Revisar arquivos</a>
+            </div>
+        </div>
+    </div>
+</main>
 {% endblock %}

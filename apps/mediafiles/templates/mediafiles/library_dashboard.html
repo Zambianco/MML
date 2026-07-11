@@ -4,11 +4,11 @@
 
 {% block content %}
 <main class="container app-page py-4">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <div class="app-page-header">
         <div>
             <p class="page-kicker mb-1">My Music Library</p>
             <h1 class="h3 mb-1">Biblioteca musical</h1>
-            <p class="text-secondary mb-0">Artistas, albuns, faixas e importacoes recentes do acervo.</p>
+            <p class="text-secondary mb-0">Acervo, fontes, backup e pipeline separados por area operacional.</p>
         </div>
         <form method="post" action="{% url 'scan-directories' %}">
             {% csrf_token %}
@@ -27,39 +27,45 @@
     <div class="row g-4 mb-4">
         <div class="col-sm-6 col-xl-3">
             <div class="card shadow-sm border-0 h-100">
-                <div class="card-body">
-                    <div class="text-secondary small">Artistas</div>
-                    <div class="display-6">{{ artist_count }}</div>
+                <div class="app-stat">
+                    <div class="app-stat-label">Artistas</div>
+                    <div class="app-stat-value">{{ artist_count }}</div>
                 </div>
             </div>
         </div>
         <div class="col-sm-6 col-xl-3">
             <div class="card shadow-sm border-0 h-100">
-                <div class="card-body">
-                    <div class="text-secondary small">Albuns</div>
-                    <div class="display-6">{{ album_count }}</div>
+                <div class="app-stat">
+                    <div class="app-stat-label">Albuns</div>
+                    <div class="app-stat-value">{{ album_count }}</div>
                 </div>
             </div>
         </div>
         <div class="col-sm-6 col-xl-3">
             <div class="card shadow-sm border-0 h-100">
-                <div class="card-body">
-                    <div class="text-secondary small">Faixas</div>
-                    <div class="display-6">{{ track_count }}</div>
+                <div class="app-stat">
+                    <div class="app-stat-label">Faixas</div>
+                    <div class="app-stat-value">{{ track_count }}</div>
                 </div>
             </div>
         </div>
         <div class="col-sm-6 col-xl-3">
             <div class="card shadow-sm border-0 h-100">
-                <div class="card-body">
-                    <div class="text-secondary small">Arquivos em revisao</div>
-                    <div class="display-6">{{ review_count }}</div>
+                <div class="app-stat">
+                    <div class="app-stat-label">Arquivos em revisao</div>
+                    <div class="app-stat-value">{{ review_count }}</div>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="row g-4">
+    <ul class="nav section-tabs mb-4">
+        <li class="nav-item"><a class="nav-link active" href="#acervo">Acervo</a></li>
+        <li class="nav-item"><a class="nav-link" href="#fontes">Fontes e backup</a></li>
+        <li class="nav-item"><a class="nav-link" href="#pipeline">Pipeline</a></li>
+    </ul>
+
+    <div class="row g-4" id="acervo">
         <section class="col-lg-8">
             <div class="card shadow-sm border-0">
                 <div class="card-body">
@@ -117,7 +123,7 @@
         </section>
 
         <section class="col-lg-4">
-            <div class="card shadow-sm border-0">
+            <div class="card shadow-sm border-0" id="fontes">
                 <div class="card-body">
                     <h2 class="h5 mb-3">Importacao</h2>
                     <form method="post" action="{% url 'create-directory' %}">
@@ -227,7 +233,7 @@
                 </div>
             </div>
 
-            <div class="card shadow-sm border-0 mt-4">
+            <div class="card shadow-sm border-0 mt-4" id="pipeline">
                 <div class="card-body">
                     <h2 class="h5 mb-3">Pipeline de audio</h2>
                     <div class="small text-secondary mb-3">

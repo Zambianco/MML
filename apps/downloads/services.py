@@ -638,11 +638,12 @@ def _process_round_items(items, should_cancel: Callable[[], bool] | None = None)
                 sources = search_slskd_sources(item)
             else:
                 sources = search_slskd_sources(item, should_cancel=should_cancel)
-        except Exception:
+        except Exception as exc:
             item.status = TrackImportItem.STATUS_ERROR
-            item.last_error = "Falha ao buscar no slskd."
+            item.last_error = f"Falha ao buscar no slskd: {exc}"
             item.save(update_fields=["status", "last_error", "updated_at"])
-            raise
+            summary["without_source"] += 1
+            continue
         summary["searched"] += 1
 
         if should_cancel is not None and should_cancel():
@@ -661,11 +662,12 @@ def _process_round_items(items, should_cancel: Callable[[], bool] | None = None)
 
         try:
             enqueue_source(source)
-        except Exception:
+        except Exception as exc:
             item.status = TrackImportItem.STATUS_ERROR
-            item.last_error = "Falha ao enfileirar download no slskd."
+            item.last_error = f"Falha ao enfileirar download no slskd: {exc}"
             item.save(update_fields=["status", "last_error", "updated_at"])
-            raise
+            summary["without_source"] += 1
+            continue
         summary["queued"] += 1
 
     return summary
