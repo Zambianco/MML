@@ -2,6 +2,65 @@
 
 {% block title %}Biblioteca | My Music Library{% endblock %}
 
+{% block extra_head %}
+<style>
+    .library-action-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        border: 1px solid var(--app-border);
+        border-radius: var(--app-radius);
+        background: rgba(255, 255, 255, 0.025);
+        padding: 0.85rem 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .library-section-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .library-mini-metric {
+        border: 1px solid var(--app-border);
+        border-radius: var(--app-radius);
+        background: rgba(255, 255, 255, 0.025);
+        padding: 0.75rem;
+        min-height: 4.25rem;
+    }
+
+    .library-mini-metric strong {
+        display: block;
+        margin-top: 0.2rem;
+        font-size: 1.1rem;
+    }
+
+    .library-provider-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0 0.75rem;
+    }
+
+    .library-provider-grid .mb-3 {
+        min-width: 0;
+    }
+
+    .library-list-card .list-group-item:first-child {
+        padding-top: 0;
+    }
+
+    @media (max-width: 768px) {
+        .library-provider-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <main class="container app-page py-4">
     <div class="app-page-header">
@@ -65,12 +124,27 @@
         <li class="nav-item"><a class="nav-link" href="#pipeline">Pipeline</a></li>
     </ul>
 
+    <div class="library-action-bar">
+        <div>
+            <div class="fw-semibold">Operacao da biblioteca</div>
+            <div class="small text-secondary">Acoes principais sem sair desta tela.</div>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <a class="btn btn-outline-dark btn-sm" href="{% url 'downloads-files' %}">Revisar arquivos</a>
+            <a class="btn btn-outline-dark btn-sm" href="{% url 'downloads-import-list' %}">Importar CSV</a>
+            <a class="btn btn-outline-dark btn-sm" href="{% url 'downloads-player' %}">Abrir player</a>
+        </div>
+    </div>
+
     <div class="row g-4" id="acervo">
         <section class="col-lg-8">
             <div class="card shadow-sm border-0">
                 <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
-                        <h2 class="h5 mb-0">Faixas recentes</h2>
+                    <div class="library-section-title">
+                        <div>
+                            <h2 class="h5 mb-1">Faixas recentes</h2>
+                            <div class="small text-secondary">Ultimas entradas reconhecidas no acervo.</div>
+                        </div>
                         <a class="btn btn-outline-dark btn-sm" href="{% url 'api-index' %}">Abrir API</a>
                     </div>
                     {% if recent_tracks %}
@@ -103,7 +177,12 @@
             </div>
             <div class="card shadow-sm border-0 mb-4">
                 <div class="card-body">
-                    <h2 class="h5 mb-3">Artistas em destaque</h2>
+                    <div class="library-section-title">
+                        <div>
+                            <h2 class="h5 mb-1">Artistas em destaque</h2>
+                            <div class="small text-secondary">Recorte rapido para conferir volume por artista.</div>
+                        </div>
+                    </div>
                     {% if featured_artists %}
                         <div class="row row-cols-1 row-cols-md-2 g-3">
                             {% for artist in featured_artists %}
@@ -125,7 +204,12 @@
         <section class="col-lg-4">
             <div class="card shadow-sm border-0" id="fontes">
                 <div class="card-body">
-                    <h2 class="h5 mb-3">Importacao</h2>
+                    <div class="library-section-title">
+                        <div>
+                            <h2 class="h5 mb-1">Fonte monitorada</h2>
+                            <div class="small text-secondary">Adicione diretorios para o scan do acervo.</div>
+                        </div>
+                    </div>
                     <form method="post" action="{% url 'create-directory' %}">
                         {% csrf_token %}
                         <div class="mb-3">
@@ -150,7 +234,12 @@
 
             <div class="card shadow-sm border-0 mt-4">
                 <div class="card-body">
-                    <h2 class="h5 mb-3">Destino de backup</h2>
+                    <div class="library-section-title">
+                        <div>
+                            <h2 class="h5 mb-1">Destino de backup</h2>
+                            <div class="small text-secondary">Configure o alvo usado pelo pipeline.</div>
+                        </div>
+                    </div>
                     <form method="post" action="{% url 'create-backup-target' %}" data-backup-form>
                         {% csrf_token %}
                         <div class="mb-3">
@@ -165,7 +254,7 @@
                             <label class="form-label" for="{{ backup_target_form.base_path.id_for_label }}">Base do backup</label>
                             {{ backup_target_form.base_path }}
                         </div>
-                        <div data-backup-fields="s3">
+                        <div class="library-provider-grid" data-backup-fields="s3">
                             <div class="mb-3">
                                 <label class="form-label" for="{{ backup_target_form.aws_bucket.id_for_label }}">Bucket</label>
                                 {{ backup_target_form.aws_bucket }}
@@ -191,7 +280,7 @@
                                 {{ backup_target_form.aws_prefix }}
                             </div>
                         </div>
-                        <div data-backup-fields="sftp">
+                        <div class="library-provider-grid" data-backup-fields="sftp">
                             <div class="mb-3">
                                 <label class="form-label" for="{{ backup_target_form.sftp_host.id_for_label }}">Host</label>
                                 {{ backup_target_form.sftp_host }}
@@ -235,9 +324,11 @@
 
             <div class="card shadow-sm border-0 mt-4" id="pipeline">
                 <div class="card-body">
-                    <h2 class="h5 mb-3">Pipeline de audio</h2>
-                    <div class="small text-secondary mb-3">
-                        Conversao automatica para Opus no scan. Backup e exclusao locais sob ordem do usuario via Celery.
+                    <div class="library-section-title">
+                        <div>
+                            <h2 class="h5 mb-1">Pipeline de audio</h2>
+                            <div class="small text-secondary">Conversao, backup e limpeza em uma area de controle.</div>
+                        </div>
                     </div>
                     <div class="small mb-3">
                         {% if backup_control.is_running %}
@@ -251,30 +342,30 @@
                     </div>
                     <div class="row g-2 mb-3">
                         <div class="col-6">
-                            <div class="border rounded p-2 small">Conversao pendente: <strong>{{ transcode_pending_count }}</strong></div>
+                            <div class="library-mini-metric small">Conversao pendente<strong>{{ transcode_pending_count }}</strong></div>
                         </div>
                         <div class="col-6">
-                            <div class="border rounded p-2 small">Conversao em andamento: <strong>{{ transcode_processing_count }}</strong></div>
+                            <div class="library-mini-metric small">Em andamento<strong>{{ transcode_processing_count }}</strong></div>
                         </div>
                         <div class="col-6">
-                            <div class="border rounded p-2 small">Opus gerado: <strong>{{ transcode_completed_count }}</strong></div>
+                            <div class="library-mini-metric small">Opus gerado<strong>{{ transcode_completed_count }}</strong></div>
                         </div>
                         <div class="col-6">
-                            <div class="border rounded p-2 small">Conversao falhou: <strong>{{ transcode_failed_count }}</strong></div>
+                            <div class="library-mini-metric small">Falhas<strong>{{ transcode_failed_count }}</strong></div>
                         </div>
                     </div>
                     <div class="row g-2 mb-3">
                         <div class="col-6">
-                            <div class="border rounded p-2 small">Backup pendente: <strong>{{ backup_pending_count }}</strong></div>
+                            <div class="library-mini-metric small">Backup pendente<strong>{{ backup_pending_count }}</strong></div>
                         </div>
                         <div class="col-6">
-                            <div class="border rounded p-2 small">Backup confirmado: <strong>{{ backup_confirmed_count }}</strong></div>
+                            <div class="library-mini-metric small">Confirmado<strong>{{ backup_confirmed_count }}</strong></div>
                         </div>
                         <div class="col-6">
-                            <div class="border rounded p-2 small">Backup falhou: <strong>{{ backup_failed_count }}</strong></div>
+                            <div class="library-mini-metric small">Backup falhou<strong>{{ backup_failed_count }}</strong></div>
                         </div>
                         <div class="col-6">
-                            <div class="border rounded p-2 small">FLAC pronto para exclusao: <strong>{{ cleanup_ready_count }}</strong></div>
+                            <div class="library-mini-metric small">FLAC para exclusao<strong>{{ cleanup_ready_count }}</strong></div>
                         </div>
                     </div>
                     <div class="d-grid gap-2 mb-3">
@@ -324,9 +415,14 @@
                 </div>
             </div>
 
-            <div class="card shadow-sm border-0 mt-4">
+            <div class="card shadow-sm border-0 mt-4 library-list-card">
                 <div class="card-body">
-                    <h2 class="h5 mb-3">Importacoes recentes</h2>
+                    <div class="library-section-title">
+                        <div>
+                            <h2 class="h5 mb-1">Importacoes recentes</h2>
+                            <div class="small text-secondary">Arquivos importados pela biblioteca.</div>
+                        </div>
+                    </div>
                     {% if recent_imports %}
                         <div class="list-group list-group-flush">
                             {% for media_file in recent_imports %}
@@ -340,7 +436,7 @@
                                         {% if media_file.track.album %}• {{ media_file.track.album.title }}{% endif %}
                                     </div>
                                     <div class="text-secondary small text-break">{{ media_file.source_path|default:media_file.path }}</div>
-                                    <audio class="w-100 mt-2" controls preload="none" src="{% url 'media-file-stream' media_file.pk %}"></audio>
+                                    <audio class="w-100 mt-2 audio-inline" controls preload="none" src="{% url 'media-file-stream' media_file.pk %}"></audio>
                                 </div>
                             {% endfor %}
                         </div>
@@ -350,9 +446,15 @@
                 </div>
             </div>
 
-            <div class="card shadow-sm border-0 mt-4">
+            <div class="card shadow-sm border-0 mt-4 library-list-card">
                 <div class="card-body">
-                    <h2 class="h5 mb-3">Destinos de backup</h2>
+                    <div class="library-section-title">
+                        <div>
+                            <h2 class="h5 mb-1">Destinos e fontes</h2>
+                            <div class="small text-secondary">Resumo do que esta configurado.</div>
+                        </div>
+                    </div>
+                    <h3 class="h6 mb-3">Destinos de backup</h3>
                     {% if backup_targets %}
                         <div class="list-group list-group-flush mb-4">
                             {% for target in backup_targets %}
@@ -377,7 +479,7 @@
                         <p class="text-secondary">Nenhum destino de backup configurado.</p>
                     {% endif %}
 
-                    <h2 class="h5 mb-3">Fontes monitoradas</h2>
+                    <h3 class="h6 mb-3">Fontes monitoradas</h3>
                     {% if directories %}
                         <div class="list-group list-group-flush">
                             {% for directory in directories %}
