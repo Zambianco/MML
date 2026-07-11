@@ -305,6 +305,8 @@ def ensure_sftp_directory(sftp, destination: str) -> None:
     current = ""
     for part in PurePosixPath(destination).parent.parts:
         current = f"{current}/{part}".replace("//", "/")
+        if current == "/":
+            continue
         try:
             sftp.stat(current)
         except OSError:
