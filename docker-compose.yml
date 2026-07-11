@@ -101,7 +101,8 @@ services:
       - "traefik.http.routers.mml.rule=PathPrefix(`/mml`)"
       - "traefik.http.routers.mml.entrypoints=web"
       - "traefik.http.services.mml.loadbalancer.server.port=80"
-
+      - "traefik.docker.network=infra_network"
+      
   slskd:
     image: slskd/slskd:latest
     environment:
