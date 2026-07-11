@@ -81,8 +81,6 @@ def build_slskd_search_query(*, name: str, artists: str, album: str = "", year: 
 def _slskd_request(method: str, path: str, payload=None):
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
     urls = [f"{settings.SLSKD_BASE_URL}{path}"]
-    if settings.SLSKD_BASE_URL == "http://slskd:5030":
-        urls.append(f"http://localhost:5030{path}")
 
     last_error = None
     for url in urls:

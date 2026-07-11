@@ -1536,8 +1536,8 @@ class DownloadImportTests(TestCase):
 
     @override_settings(SLSKD_BASE_URL="http://slskd:5030")
     @patch("apps.downloads.services.urlopen")
-    def test_slskd_request_falls_back_to_localhost(self, urlopen):
-        urlopen.side_effect = [URLError("getaddrinfo failed"), FakeResponse()]
+    def test_slskd_request_uses_internal_service_url(self, urlopen):
+        urlopen.return_value = FakeResponse()
 
         self.assertEqual(_slskd_request("GET", "/api/v0/session"), {})
-        self.assertIn("http://localhost:5030/api/v0/session", urlopen.call_args_list[1].args[0].full_url)
+        self.assertEqual(urlopen.call_args_list[0].args[0].full_url, "http://slskd:5030/api/v0/session")

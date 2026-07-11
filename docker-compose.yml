@@ -42,6 +42,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      slskd:
+        condition: service_started
 
 
   worker:
@@ -59,6 +61,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      slskd:
+        condition: service_started
 
   worker_backups:
     build:
@@ -103,9 +107,9 @@ services:
     environment:
       SLSKD_REMOTE_CONFIGURATION: "true"
       SLSKD_DOWNLOADS_DIR: ${SLSKD_DOWNLOADS_DIR:-/music}
-      SLSKD_API_KEY: ${API}
-      SLSKD_SLSK_USERNAME: ${USUARIO}
-      SLSKD_SLSK_PASSWORD: ${SENHA}
+      SLSKD_API_KEY: ${SLSKD_API_KEY:-${API:-12345678901234567890}}
+      SLSKD_SLSK_USERNAME: ${SLSKD_SLSK_USERNAME:-${USUARIO:-}}
+      SLSKD_SLSK_PASSWORD: ${SLSKD_SLSK_PASSWORD:-${SENHA:-}}
     volumes:
       - slskd_data:/app
       - ${MUSIC_DIR:-../../music}:/music
