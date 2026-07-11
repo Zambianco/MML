@@ -25,9 +25,15 @@ def pwa_manifest(request: HttpRequest) -> JsonResponse:
             "theme_color": "#d4a373",
             "icons": [
                 {
-                    "src": static("core/pwa-icon.svg"),
-                    "sizes": "any",
-                    "type": "image/svg+xml",
+                    "src": static("core/pwa-icon-192.png"),
+                    "sizes": "192x192",
+                    "type": "image/png",
+                    "purpose": "any maskable",
+                },
+                {
+                    "src": static("core/pwa-icon-512.png"),
+                    "sizes": "512x512",
+                    "type": "image/png",
                     "purpose": "any maskable",
                 }
             ],
@@ -44,7 +50,9 @@ const PLAYER_URL = "{player_url}";
 const PRECACHE_URLS = [PLAYER_URL];
 
 self.addEventListener("install", (event) => {{
-    event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS)));
+    event.waitUntil(
+        caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS).catch(() => undefined))
+    );
     self.skipWaiting();
 }});
 
