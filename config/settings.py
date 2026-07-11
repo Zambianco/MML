@@ -162,3 +162,8 @@ LOGOUT_REDIRECT_URL = "login"
 USE_X_FORWARDED_HOST = True
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
+
+CELERY_TASK_ROUTES = {
+    'apps.mediafiles.tasks.backup_media_file_task': {'queue': 'backups'},
+}
+
