@@ -1,7 +1,11 @@
 from rest_framework import serializers
+from django.urls import reverse
+from urllib.parse import urlencode
 
 from apps.library.models import Album, Artist, Track
 from apps.mediafiles.models import BackupTarget, MediaFile, MonitoredDirectory
+from apps.downloads.views import _resolve_local_download_path
+from apps.playback.models import FavoriteTrack
 
 
 class ArtistSerializer(serializers.ModelSerializer):
@@ -122,3 +126,55 @@ class MediaFileSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "directory_name", "track_title", "discovered_at", "updated_at"]
+
+
+class PlayerTrackSerializer(serializers.Serializer):
+    id = serializers.CharField()
+    path = serializers.CharField()
+    relative_path = serializers.CharField()
+    name = serializers.CharField()
+    title = serializers.CharField()
+    artist = serializers.CharField(allow_blank=True)
+    album = serializers.CharField(allow_blank=True)
+    year = serializers.CharField(allow_blank=True)
+    subtitle = serializers.CharField(allow_blank=True)
+    cover_url = serializers.SerializerMethodField()
+    stream_url = serializers.SerializerMethodField()
+    size = serializers.IntegerField()
+    modified_at = serializers.DateTimeField()
+    is_favorite = serializers.BooleanField()
+
+    def get_cover_url(self, obj: dict) -> str:
+        if not obj.get("cover_url"):
+            return ""
+        return self._absolute_url(f"{reverse('api-player-cover')}?{urlencode({'path': obj['relative_path']})}")
+
+    def get_stream_url(self, obj: dict) -> str:
+        return self._absolute_url(f"{reverse('api-player-stream')}?{urlencode({'path': obj['relative_path']})}")
+
+    def _absolute_url(self, url: str) -> str:
+        request = self.context.get("request")
+        if not url or request is None:
+            return url
+        return request.build_absolute_uri(url)
+
+
+class FavoriteToggleSerializer(serializers.Serializer):
+    path = serializers.CharField()
+    is_favorite = serializers.BooleanField(required=False, default=True)
+
+    def validate_path(self, value: str) -> str:
+        file_path = _resolve_local_download_path(value)
+        if file_path is None:
+            raise serializers.ValidationError("Arquivo nao encontrado.")
+        return str(file_path)
+
+    def save(self, **kwargs) -> FavoriteTrack:
+        user = self.context["request"].user
+        file_path = self.validated_data["path"]
+        should_favorite = self.validated_data["is_favorite"]
+        if should_favorite:
+            favorite, _ = FavoriteTrack.objects.get_or_create(user=user, file_path=file_path)
+            return favorite
+        FavoriteTrack.objects.filter(user=user, file_path=file_path).delete()
+        return FavoriteTrack(user=user, file_path=file_path)

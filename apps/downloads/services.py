@@ -33,6 +33,7 @@ ISRC_PATTERN = re.compile(r"^[A-Z]{2}[A-Z0-9]{3}\d{7}$")
 MAX_SOURCES_PER_ITEM = 10
 SEARCH_STATUS_INTERVAL_SECONDS = 5
 SEARCH_TIMEOUT_SECONDS = 90
+ROUND_IDLE_SLEEP_SECONDS = 10
 DOWNLOAD_STALE_TIMEOUT = 6 * 60 * 60
 
 
@@ -673,6 +674,10 @@ def _process_round_items(items, should_cancel: Callable[[], bool] | None = None)
     return summary
 
 
+def _import_done_count(track_import: TrackImport) -> int:
+    return track_import.items.filter(status=TrackImportItem.STATUS_DONE).count()
+
+
 def process_download_round(track_import: TrackImport, limit: int = 0, should_cancel: Callable[[], bool] | None = None) -> dict[str, int]:
     recovered = recover_stuck_searches(track_import)
     recovered_queued = recovered["queued"] + recovered["downloading"]
@@ -686,28 +691,26 @@ def process_download_round(track_import: TrackImport, limit: int = 0, should_can
     summary = {"searched": 0, "queued": 0, "without_source": 0, "cancelled": 0}
     summary["queued"] += recovered_queued
     summary["without_source"] += recovered_failed
-    include_errors = True
-    while True:
+    total_items = track_import.item_count or track_import.items.count()
+    while _import_done_count(track_import) < total_items:
         if should_cancel is not None and should_cancel():
             summary["cancelled"] = 1
             break
 
         batch_summary = _process_round_items(
-            list(_round_items_queryset(track_import, include_errors=include_errors)),
+            list(_round_items_queryset(track_import, include_errors=True)),
             should_cancel=should_cancel,
         )
-        include_errors = False
         for key, value in batch_summary.items():
             summary[key] += value
         if batch_summary["cancelled"]:
             break
-        if batch_summary["searched"] or batch_summary["queued"] or batch_summary["without_source"]:
-            continue
         try:
             update_download_statuses(track_import)
-        except (URLError, TimeoutError):
+        except Exception:
             pass
-        break
+        if _import_done_count(track_import) < total_items:
+            time.sleep(ROUND_IDLE_SLEEP_SECONDS)
 
     return summary
 

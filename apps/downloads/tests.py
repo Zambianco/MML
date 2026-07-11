@@ -1463,7 +1463,38 @@ class DownloadImportTests(TestCase):
     @patch("apps.downloads.services.update_download_statuses")
     @patch("apps.downloads.services.enqueue_source")
     @patch("apps.downloads.services.search_slskd_sources")
-    def test_process_round_with_zero_limit_does_not_wait_for_downloads(self, search_slskd_sources, enqueue_source, update_download_statuses, _sleep):
+    def test_process_round_with_zero_limit_retries_errors_until_done(self, search_slskd_sources, enqueue_source, update_download_statuses, sleep):
+        track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
+        item = TrackImportItem.objects.create(
+            track_import=track_import,
+            row_number=1,
+            artists="Elysion",
+            name="Fairytale",
+            search_query="Elysion Fairytale",
+        )
+        source = item.sources.create(rank=1, username="user", remote_filename="fairytale.flac")
+        search_slskd_sources.side_effect = [URLError("offline"), [source]]
+
+        def fake_enqueue(selected_source):
+            selected_source.item.status = TrackImportItem.STATUS_DONE
+            selected_source.item.save(update_fields=["status", "updated_at"])
+
+        enqueue_source.side_effect = fake_enqueue
+
+        summary = process_download_round(track_import, limit=0)
+
+        self.assertEqual(summary, {"searched": 1, "queued": 1, "without_source": 1, "cancelled": 0})
+        self.assertEqual(search_slskd_sources.call_count, 2)
+        self.assertEqual(update_download_statuses.call_count, 2)
+        sleep.assert_called_once()
+        item.refresh_from_db()
+        self.assertEqual(item.status, TrackImportItem.STATUS_DONE)
+
+    @patch("apps.downloads.services.time.sleep")
+    @patch("apps.downloads.services.update_download_statuses")
+    @patch("apps.downloads.services.enqueue_source")
+    @patch("apps.downloads.services.search_slskd_sources")
+    def test_process_round_with_zero_limit_waits_until_downloads_finish(self, search_slskd_sources, enqueue_source, update_download_statuses, sleep):
         track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
         item = TrackImportItem.objects.create(
             track_import=track_import,
@@ -1492,16 +1523,17 @@ class DownloadImportTests(TestCase):
         summary = process_download_round(track_import, limit=0)
 
         self.assertEqual(summary, {"searched": 1, "queued": 1, "without_source": 0, "cancelled": 0})
-        self.assertEqual(update_download_statuses.call_count, 1)
+        self.assertEqual(update_download_statuses.call_count, 2)
+        sleep.assert_called_once()
         search_slskd_sources.assert_called_once()
         item.refresh_from_db()
-        self.assertEqual(item.status, TrackImportItem.STATUS_DOWNLOADING)
+        self.assertEqual(item.status, TrackImportItem.STATUS_DONE)
 
     @patch("apps.downloads.services.time.sleep")
     @patch("apps.downloads.services.update_download_statuses")
     @patch("apps.downloads.services.enqueue_source")
     @patch("apps.downloads.services.search_slskd_sources")
-    def test_process_round_with_zero_limit_finishes_after_enqueuing(self, search_slskd_sources, enqueue_source, update_download_statuses, _sleep):
+    def test_process_round_with_zero_limit_keeps_waiting_after_status_update_error(self, search_slskd_sources, enqueue_source, update_download_statuses, sleep):
         track_import = TrackImport.objects.create(source_name="downloads.csv", item_count=1)
         item = TrackImportItem.objects.create(
             track_import=track_import,
@@ -1531,9 +1563,10 @@ class DownloadImportTests(TestCase):
         summary = process_download_round(track_import, limit=0)
 
         self.assertEqual(summary, {"searched": 1, "queued": 1, "without_source": 0, "cancelled": 0})
-        self.assertEqual(update_download_statuses.call_count, 1)
+        self.assertEqual(update_download_statuses.call_count, 2)
+        sleep.assert_called_once()
         item.refresh_from_db()
-        self.assertEqual(item.status, TrackImportItem.STATUS_DOWNLOADING)
+        self.assertEqual(item.status, TrackImportItem.STATUS_DONE)
 
     @override_settings(SLSKD_BASE_URL="http://slskd:5030")
     @patch("apps.downloads.services.urlopen")
