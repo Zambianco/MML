@@ -181,10 +181,11 @@
     }
 
     .cover-image {
-        width: 100%;
+        width: min(100%, 450px, calc(100vh - 260px));
         max-width: 450px;
-        min-width: 220px;
-        min-height: 220px;
+        max-height: 100%;
+        min-width: 0;
+        min-height: 0;
         aspect-ratio: 1 / 1;
         border-radius: 28px;
         background:
@@ -203,6 +204,11 @@
         height: 100%;
         object-fit: cover;
         display: block;
+    }
+
+    .cover-image img[hidden],
+    .sr-cover[hidden] {
+        display: none;
     }
 
     .song-info {

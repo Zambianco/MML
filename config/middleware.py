@@ -62,7 +62,10 @@ class LoginRequiredMiddleware:
 
         if path == "/api/auth/token/" or path.startswith("/api/auth/token/"):
             return self.get_response(request)
-        if path.startswith("/api/") and request.headers.get("Authorization", "").startswith("Token "):
+        auth_header = request.headers.get("Authorization", "")
+        if path.startswith("/api/") and (
+            auth_header.startswith("Token ") or auth_header.startswith("Bearer ")
+        ):
             return self.get_response(request)
         if path.startswith("/api/"):
             return JsonResponse({"detail": "Authentication credentials were not provided."}, status=401)
