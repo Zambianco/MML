@@ -23,6 +23,12 @@
         overflow: hidden;
     }
 
+    @supports (min-height: 100dvh) {
+        .player-container {
+            min-height: calc(100dvh - 57px);
+        }
+    }
+
     .player-left {
         flex: 1 1 45%;
         background: #111;
@@ -353,6 +359,10 @@
 
     .ctrl-btn:hover {
         background: rgba(255, 255, 255, 0.08);
+        color: #fff;
+    }
+
+    .ctrl-btn:active {
         color: #ff564c;
     }
 
