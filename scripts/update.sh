@@ -63,6 +63,8 @@ print_failure_details() {
   docker compose -f "$COMPOSE_FILE" logs web --tail 120 >&2 || true
 }
 
+trap 'echo "Interrompido." >&2; exit 130' INT TERM
+
 wait_for_web() {
   echo "Aguardando web (gunicorn) aceitar conexoes..."
   end_time=$(( $(date +%s) + 600 ))
