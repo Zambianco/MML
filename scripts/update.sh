@@ -70,6 +70,7 @@ wait_for_web() {
     if docker compose -f "$COMPOSE_FILE" exec -T web python -c "import socket; socket.create_connection(('127.0.0.1', 8000), 2).close()" >/dev/null 2>&1; then
       return 0
     fi
+    echo "  ... $(docker compose -f "$COMPOSE_FILE" logs web --tail 1 2>&1 | tail -n 1)"
     sleep 3
   done
   echo "Timeout aguardando o web na porta 8000." >&2
