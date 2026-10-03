@@ -1190,7 +1190,7 @@ class DownloadImportTests(TestCase):
             name="Fairytale",
             search_query="Elysion Fairytale",
         )
-        slskd_request.side_effect = [{"id": "abc"}, None]
+        slskd_request.side_effect = [{"id": "abc"}, {"id": "def"}, None, None]
 
         sources = search_slskd_sources(item, should_cancel=lambda: True)
 
@@ -1198,7 +1198,7 @@ class DownloadImportTests(TestCase):
         self.assertEqual(sources, [])
         self.assertEqual(item.search_state, "Cancelled")
         self.assertIsNotNone(item.search_finished_at)
-        self.assertEqual(slskd_request.call_args_list[-1].args[:2], ("DELETE", "/api/v0/searches/abc"))
+        self.assertEqual(slskd_request.call_args_list[-2].args[:2], ("DELETE", "/api/v0/searches/abc"))
         sleep.assert_not_called()
 
     @patch("apps.downloads.services._slskd_request")
@@ -1315,7 +1315,7 @@ class DownloadImportTests(TestCase):
         self.assertRedirects(response, reverse("downloads-import-detail", args=[track_import.pk]))
         item.refresh_from_db()
         self.assertEqual(item.search_query_mode, TrackImportItem.SEARCH_QUERY_AUTO)
-        self.assertEqual(item.search_query, "Mortemia Frozen 2022")
+        self.assertEqual(item.search_query, "Mortemia Frozen | Frozen")
 
     def test_upload_csv_rejects_missing_required_headers(self):
         content = "Nome;Album;Ano\nFrozen;Frozen;2022\n"
@@ -1362,9 +1362,13 @@ class DownloadImportTests(TestCase):
         )
         slskd_request.side_effect = [
             {"id": "abc"},
+            {"id": "def"},
+            {"isComplete": False},
             {"isComplete": False},
             {"isComplete": True},
+            {"isComplete": True},
             [{"username": "user", "files": [{"filename": "Elysion - Fairytale.flac", "extension": "flac", "size": 1}]}],
+            [],
             None,
         ]
 
@@ -1388,7 +1392,10 @@ class DownloadImportTests(TestCase):
         )
         slskd_request.side_effect = [
             {"id": "abc"},
+            {"id": "def"},
             {"isComplete": True},
+            {"isComplete": True},
+            [],
             [],
             None,
         ]
@@ -1397,8 +1404,9 @@ class DownloadImportTests(TestCase):
 
         item.refresh_from_db()
         self.assertEqual(item.search_attempts, 1)
-        self.assertEqual(item.search_query, "Mortemia Frozen 2022")
-        self.assertEqual(slskd_request.call_args_list[0].args[2]["searchText"], "Mortemia Frozen 2022")
+        self.assertEqual(item.search_query, "Mortemia Frozen | Frozen")
+        self.assertEqual(slskd_request.call_args_list[0].args[2]["searchText"], "Mortemia Frozen")
+        self.assertEqual(slskd_request.call_args_list[1].args[2]["searchText"], "Frozen")
 
     @patch("apps.downloads.services.search_slskd_sources")
     def test_process_round_prioritizes_items_with_fewer_searches(self, search_slskd_sources):

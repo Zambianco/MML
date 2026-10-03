@@ -79,6 +79,27 @@ def build_slskd_search_query(*, name: str, artists: str, album: str = "", year: 
     return " ".join(query_parts)
 
 
+SEARCH_QUERY_SEPARATOR = " | "
+
+
+def _clean_query_text(value: str) -> str:
+    value = re.sub(r"[\(\[][^\)\]]*[\)\]]", " ", value).split(" - ")[0]
+    return " ".join(re.sub(r"[^\w\s']", " ", value).split())
+
+
+def build_search_query_variants(*, name: str, artists: str, album: str = "") -> list[str]:
+    artist = _clean_query_text(re.split(r"[,;]", artists)[0])
+    title = _clean_query_text(name) or name.strip()
+    album = _clean_query_text(album)
+    candidates = [f"{artist} {title}", f"{title} {album}" if album and album.lower() != title.lower() else "", title]
+    variants: list[str] = []
+    for candidate in candidates:
+        candidate = candidate.strip()
+        if candidate and candidate.lower() not in (v.lower() for v in variants):
+            variants.append(candidate)
+    return variants
+
+
 def _slskd_request(method: str, path: str, payload=None):
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
     urls = [f"{settings.SLSKD_BASE_URL}{path}"]
@@ -142,24 +163,20 @@ def score_slskd_source(response: dict, file_data: dict, item: TrackImportItem) -
     return round(score, 2)
 
 
+def _auto_search_query(item: TrackImportItem) -> str:
+    return SEARCH_QUERY_SEPARATOR.join(
+        build_search_query_variants(name=item.name, artists=item.artists, album=item.album)
+    )
+
+
 def get_item_search_query(item: TrackImportItem) -> str:
     if item.search_query_mode == TrackImportItem.SEARCH_QUERY_MANUAL and item.search_query.strip():
         return item.search_query
-    return build_slskd_search_query(
-        name=item.name,
-        artists=item.artists,
-        album=item.album,
-        year=item.year,
-    )
+    return _auto_search_query(item)
 
 
 def refresh_auto_item_search_query(item: TrackImportItem) -> str:
-    search_query = build_slskd_search_query(
-        name=item.name,
-        artists=item.artists,
-        album=item.album,
-        year=item.year,
-    )
+    search_query = _auto_search_query(item)
     if item.search_query != search_query or item.search_query_mode != TrackImportItem.SEARCH_QUERY_AUTO:
         item.search_query = search_query
         item.search_query_mode = TrackImportItem.SEARCH_QUERY_AUTO
@@ -173,6 +190,24 @@ def sync_item_search_query(item: TrackImportItem) -> str:
     return refresh_auto_item_search_query(item)
 
 
+def _delete_slskd_searches(search_ids: list[str]) -> None:
+    for search_id in search_ids:
+        try:
+            _slskd_request("DELETE", f"/api/v0/searches/{search_id}")
+        except (URLError, TimeoutError):
+            pass
+
+
+def _merge_slskd_responses(responses_per_search: list[list[dict]]) -> list[dict]:
+    merged: dict[str, dict] = {}
+    for responses in responses_per_search:
+        for response in responses:
+            entry = merged.setdefault(str(response.get("username") or ""), {**response, "files": []})
+            known = {file_data.get("filename") for file_data in entry["files"]}
+            entry["files"].extend(f for f in response.get("files", []) if f.get("filename") not in known)
+    return list(merged.values())
+
+
 def search_slskd_sources(
     item: TrackImportItem,
     max_sources: int = MAX_SOURCES_PER_ITEM,
@@ -180,18 +215,26 @@ def search_slskd_sources(
     should_cancel: Callable[[], bool] | None = None,
 ) -> list[TrackImportItemSource]:
     search_query = sync_item_search_query(item)
+    if item.search_query_mode == TrackImportItem.SEARCH_QUERY_MANUAL:
+        queries = [search_query]
+    else:
+        queries = search_query.split(SEARCH_QUERY_SEPARATOR)
 
+    search_ids: list[str] = []
     try:
-        search = _slskd_request("POST", "/api/v0/searches", {"searchText": search_query})
+        for query in queries:
+            search_ids.append(str(_slskd_request("POST", "/api/v0/searches", {"searchText": query})["id"]))
     except HTTPError as exc:
+        _delete_slskd_searches(search_ids)
         if exc.code != 409:
             raise
-        # slskd recusa buscas com texto igual a uma já existente; remove as antigas e tenta de novo.
-        for old in _slskd_request("GET", "/api/v0/searches") or []:
-            if str(old.get("searchText") or "").strip().lower() == search_query.strip().lower():
-                _slskd_request("DELETE", f"/api/v0/searches/{old['id']}")
-        search = _slskd_request("POST", "/api/v0/searches", {"searchText": search_query})
-    search_id = search["id"]
+        # slskd responde 409 quando não está conectado/logado no servidor Soulseek.
+        state = (_slskd_request("GET", "/api/v0/server") or {}).get("state") or "desconhecido"
+        raise URLError(f"slskd desconectado do servidor Soulseek (estado: {state}). Reconecte o slskd e tente de novo.") from exc
+    except Exception:
+        _delete_slskd_searches(search_ids)
+        raise
+    search_id = search_ids[0]
     started_at = time.monotonic()
     item.search_attempts += 1
     item.search_slskd_id = str(search_id)
@@ -219,11 +262,11 @@ def search_slskd_sources(
             if should_cancel is not None and should_cancel():
                 cancelled = True
                 break
-            status = _slskd_request("GET", f"/api/v0/searches/{search_id}") or {}
-            item.search_state = str(status.get("state") or "")
-            item.search_response_count = int(status.get("responseCount") or 0)
+            statuses = [_slskd_request("GET", f"/api/v0/searches/{sid}") or {} for sid in search_ids]
+            item.search_state = str(statuses[0].get("state") or "")
+            item.search_response_count = sum(int(status.get("responseCount") or 0) for status in statuses)
             item.save(update_fields=["search_state", "search_response_count", "updated_at"])
-            if status.get("isComplete") or time.monotonic() - started_at >= SEARCH_TIMEOUT_SECONDS:
+            if all(status.get("isComplete") for status in statuses) or time.monotonic() - started_at >= SEARCH_TIMEOUT_SECONDS:
                 break
             time.sleep(SEARCH_STATUS_INTERVAL_SECONDS)
 
@@ -233,12 +276,13 @@ def search_slskd_sources(
             item.save(update_fields=["search_state", "search_finished_at", "updated_at"])
             return []
 
-        responses = _slskd_request("GET", f"/api/v0/searches/{search_id}/responses") or []
+        responses = _merge_slskd_responses(
+            [_slskd_request("GET", f"/api/v0/searches/{sid}/responses") or [] for sid in search_ids]
+        )
         item.search_finished_at = timezone.now()
         item.save(update_fields=["search_finished_at", "updated_at"])
     finally:
-        if cancelled or not keep_search:
-            _slskd_request("DELETE", f"/api/v0/searches/{search_id}")
+        _delete_slskd_searches(search_ids if cancelled or not keep_search else search_ids[1:])
 
     return _save_ranked_sources(item, responses, max_sources=max_sources)
 
