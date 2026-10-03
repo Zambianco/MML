@@ -12,6 +12,15 @@
         <a class="btn btn-outline-secondary" href="{% url 'library-dashboard' %}">Voltar</a>
     </div>
 
+    <details class="mb-3">
+        <summary class="small fw-semibold">Registrar manifesto (marcar como ja no backup, sem baixar ou enviar)</summary>
+        <form class="mt-3" method="post" action="{% url 'manual-backup-register-manifest' %}">
+            {% csrf_token %}
+            <div class="mb-2">{{ reconcile_form.manifest_text }}</div>
+            <button class="btn btn-dark btn-sm" type="submit">Registrar manifesto</button>
+        </form>
+    </details>
+
     {% if items %}
     <form method="post" action="{% url 'manual-backup-download-batch' %}">
         {% csrf_token %}
@@ -47,6 +56,21 @@
     </script>
     {% else %}
     <div class="alert alert-success">Nenhum backup faltante.</div>
+    {% endif %}
+
+    {% if confirmed %}
+    <h2 class="h6 mt-4">Ja no backup ({{ confirmed|length }})</h2>
+    <div class="list-group">
+        {% for item in confirmed %}
+        <div class="list-group-item d-flex align-items-center gap-3">
+            <div class="flex-grow-1 text-break">
+                <div class="fw-semibold">{{ item.media_file.track.title|default:item.filename }}</div>
+                <div class="small text-secondary">{% if item.media_file.track.artist %}{{ item.media_file.track.artist }} &middot; {% endif %}{{ item.filename }}</div>
+            </div>
+            <span class="badge text-bg-success">No backup</span>
+        </div>
+        {% endfor %}
+    </div>
     {% endif %}
 </div>
 {% endblock %}

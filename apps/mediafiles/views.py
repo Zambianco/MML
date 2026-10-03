@@ -13,7 +13,7 @@ from apps.core.audio import stream_audio_file
 from apps.library.models import Album, Artist, Track
 from apps.scanner.tasks import scan_monitored_directories_task
 
-from .backup import get_backup_control, pending_backup_queryset, pause_backup_control, reconcile_backup_manifest, resolve_media_file_path, resume_backup_control
+from .backup import get_backup_control, pending_backup_queryset, pause_backup_control, reconcile_backup_manifest, register_backup_manifest, resolve_media_file_path, resume_backup_control
 from .forms import BackupReconciliationForm, BackupTargetForm, MonitoredDirectoryForm
 from .models import BackupTarget, MediaFile, MonitoredDirectory
 from .services import cleanup_ready_queryset, preferred_media_file_for_track
@@ -196,7 +196,41 @@ def manual_backup(request: HttpRequest) -> HttpResponse:
     for media_file in pending_backup_queryset().select_related("track", "track__artist").order_by("track__artist__name", "track__title", "id"):
         path = resolve_media_file_path(media_file)
         items.append({"media_file": media_file, "filename": path.name, "available": path.is_file()})
-    return render(request, "mediafiles/manual_backup.html", {"items": items, "available_count": sum(1 for item in items if item["available"])})
+    confirmed = [
+        {"media_file": media_file, "filename": Path(media_file.path or media_file.source_path or "").name}
+        for media_file in MediaFile.objects.filter(
+            origin_type=MediaFile.OriginType.ORIGINAL,
+            audio_format="flac",
+            original_backup_status=MediaFile.BackupStatus.CONFIRMED,
+        )
+        .select_related("track", "track__artist")
+        .order_by("track__artist__name", "track__title", "id")
+    ]
+    return render(
+        request,
+        "mediafiles/manual_backup.html",
+        {
+            "items": items,
+            "confirmed": confirmed,
+            "available_count": sum(1 for item in items if item["available"]),
+            "reconcile_form": BackupReconciliationForm(),
+        },
+    )
+
+
+@require_POST
+def manual_backup_register_manifest(request: HttpRequest) -> HttpResponse:
+    form = BackupReconciliationForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, "Nao foi possivel ler o manifesto de backup. Verifique o conteudo enviado.")
+        return redirect(reverse("manual-backup"))
+    try:
+        registered, hash_count = register_backup_manifest(manifest_text=form.cleaned_data["manifest_text"])
+    except Exception:
+        messages.error(request, "Nao foi possivel analisar o manifesto de backup.")
+        return redirect(reverse("manual-backup"))
+    messages.success(request, f"{registered} arquivo(s) marcados como ja no backup ({hash_count} hash(es) no manifesto).")
+    return redirect(reverse("manual-backup"))
 
 
 def manual_backup_download(request: HttpRequest, pk: int) -> HttpResponse:

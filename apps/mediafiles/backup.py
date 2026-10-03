@@ -267,6 +267,21 @@ def reconcile_backup_manifest(*, manifest_text: str) -> BackupReconciliationResu
     )
 
 
+def register_backup_manifest(*, manifest_text: str) -> tuple[int, int]:
+    manifest_hashes = parse_backup_manifest_hashes(manifest_text)
+    if not manifest_hashes:
+        raise BackupError("Nenhum sha256 valido foi encontrado no manifesto.")
+    originals = MediaFile.objects.filter(origin_type=MediaFile.OriginType.ORIGINAL, audio_format="flac", sha256__in=manifest_hashes)
+    registered = 0
+    for media_file in originals.exclude(original_backup_status=MediaFile.BackupStatus.CONFIRMED):
+        media_file.original_backup_status = MediaFile.BackupStatus.CONFIRMED
+        media_file.original_backup_sha256 = media_file.sha256
+        media_file.original_backed_up_at = timezone.now()
+        media_file.save(update_fields=["original_backup_status", "original_backup_sha256", "original_backed_up_at"])
+        registered += 1
+    return registered, len(manifest_hashes)
+
+
 def resolve_media_file_path(media_file: MediaFile) -> Path:
     for candidate in (media_file.path, media_file.source_path):
         if candidate:

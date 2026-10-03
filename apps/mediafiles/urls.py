@@ -1,6 +1,6 @@
 from django.urls import path
 
-from .views import create_backup_target, create_directory, library_dashboard, manual_backup, manual_backup_download, manual_backup_download_batch, media_file_stream, pause_backups, queue_backups, queue_cleanup, reconcile_backups, scan_directories
+from .views import create_backup_target, create_directory, library_dashboard, manual_backup, manual_backup_download, manual_backup_download_batch, manual_backup_register_manifest, media_file_stream, pause_backups, queue_backups, queue_cleanup, reconcile_backups, scan_directories
 
 urlpatterns = [
     path("", library_dashboard, name="library-dashboard"),
@@ -8,7 +8,8 @@ urlpatterns = [
     path("backup-targets/", create_backup_target, name="create-backup-target"),
     path("backup/reconcile/", reconcile_backups, name="reconcile-backups"),
     path("backup/manual/", manual_backup, name="manual-backup"),
-    path("backup/manual/download/", manual_backup_download_batch, name="manual-backup-download-batch"),
+    path("backup/manual/manifesto/", manual_backup_register_manifest, name="manual-backup-register-manifest"),
+    path("backup/manual/download/",manual_backup_download_batch, name="manual-backup-download-batch"),
     path("backup/manual/download/<int:pk>/", manual_backup_download, name="manual-backup-download"),
     path("backup/run/", queue_backups, name="queue-backups"),
     path("backup/pause/", pause_backups, name="pause-backups"),
