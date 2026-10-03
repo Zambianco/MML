@@ -111,30 +111,20 @@
                         <span class="badge text-bg-light">{{ imports|length }} item(ns)</span>
                     </div>
                     {% if imports %}
-                        <div class="table-responsive">
-                            <table class="table table-sm align-middle mb-0 imports-table">
-                                <thead>
-                                    <tr>
-                                        <th>Arquivo</th>
-                                        <th>Faixas</th>
-                                        <th>Data</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for track_import in imports %}
-                                        <tr>
-                                            <td>
-                                                <a class="link-dark fw-semibold" href="{% url 'downloads-import-detail' track_import.pk %}">
-                                                    <i class="bi bi-file-earmark-music me-2 text-secondary"></i>{{ track_import.source_name }}
-                                                </a>
-                                            </td>
-                                            <td>{{ track_import.item_count }}</td>
-                                            <td>{{ track_import.created_at }}</td>
-                                        </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
+                        <ul class="media-list">
+                            {% for track_import in imports %}
+                                <li>
+                                    <a class="media-row text-decoration-none text-reset" style="grid-template-columns: 56px minmax(0, 1fr) auto;" href="{% url 'downloads-import-detail' track_import.pk %}">
+                                        <div class="media-row-icon"><i class="bi bi-file-earmark-music"></i></div>
+                                        <div>
+                                            <div class="media-row-title">{{ track_import.source_name }}</div>
+                                            <div class="media-row-sub">{{ track_import.created_at }}</div>
+                                        </div>
+                                        <div class="media-row-end"><span class="badge text-bg-light">{{ track_import.item_count }} faixas</span></div>
+                                    </a>
+                                </li>
+                            {% endfor %}
+                        </ul>
                     {% else %}
                         <div class="imports-note p-4 text-center">
                             <i class="bi bi-disc text-secondary d-block mb-2" style="font-size: 1.75rem;"></i>

@@ -2,6 +2,10 @@
 
 {% block title %}Arquivos baixados | My Music Library{% endblock %}
 
+{% block extra_head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+{% endblock %}
+
 {% block content %}
 <main class="container app-page py-4">
     <div class="app-page-header">
@@ -96,41 +100,32 @@
                 <div class="small text-secondary">{{ file_count }} arquivo{{ file_count|pluralize }}</div>
             </div>
             {% if files %}
-                <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Arquivo</th>
-                                <th>Metadados</th>
-                                <th class="text-nowrap">Tamanho</th>
-                                <th class="text-nowrap">Modificado</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for file in files %}
-                                <tr>
-                                    <td class="text-break" style="min-width: 260px;">
-                                        <div class="fw-semibold"><i class="bi bi-file-earmark-music me-2 text-secondary"></i>{{ file.name }}</div>
-                                        <div class="small text-secondary">{{ file.relative_path }}</div>
-                                        <div class="small text-secondary opacity-75">{{ file.root }}</div>
-                                        <audio class="w-100 mt-2 audio-inline" controls preload="none" src="{{ file.stream_url }}"></audio>
-                                    </td>
-                                    <td class="text-break small">
-                                        <div class="fw-semibold">{{ file.title|default:"-" }}</div>
-                                        <div class="text-secondary">{{ file.artist|default:"-" }} · {{ file.album|default:"-" }}{% if file.year %} · {{ file.year }}{% endif %}</div>
-                                        {% if file.has_missing_metadata %}
-                                            <span class="badge text-bg-warning mt-1"><i class="bi bi-exclamation-triangle me-1"></i>Faltando: {{ file.missing_metadata_fields|join:", " }}</span>
-                                        {% else %}
-                                            <span class="badge text-bg-success mt-1"><i class="bi bi-check2 me-1"></i>OK</span>
-                                        {% endif %}
-                                    </td>
-                                    <td class="text-nowrap small">{{ file.size|filesizeformat }}</td>
-                                    <td class="text-nowrap small">{{ file.modified_at|date:"d/m/Y H:i" }}</td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
+                <ul class="media-list">
+                    {% for file in files %}
+                        <li class="media-row">
+                            <div class="media-row-icon"><i class="bi bi-music-note-beamed"></i></div>
+                            <div>
+                                <div class="media-row-title">{{ file.title|default:file.name }}</div>
+                                <div class="media-row-sub">{{ file.artist|default:"-" }} · {{ file.album|default:"-" }}{% if file.year %} · {{ file.year }}{% endif %}</div>
+                                <div class="media-row-sub opacity-75">{{ file.relative_path }}</div>
+                            </div>
+                            <div>
+                                <audio class="w-100 audio-inline" controls preload="none" src="{{ file.stream_url }}"></audio>
+                                <div class="mt-1">
+                                    {% if file.has_missing_metadata %}
+                                        <span class="badge text-bg-warning"><i class="bi bi-exclamation-triangle me-1"></i>Faltando: {{ file.missing_metadata_fields|join:", " }}</span>
+                                    {% else %}
+                                        <span class="badge text-bg-success"><i class="bi bi-check2 me-1"></i>OK</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="media-row-end">
+                                <div>{{ file.size|filesizeformat }}</div>
+                                <div>{{ file.modified_at|date:"d/m/Y H:i" }}</div>
+                            </div>
+                        </li>
+                    {% endfor %}
+                </ul>
             {% else %}
                 <div class="text-center py-5">
                     <i class="bi bi-folder2-open text-secondary d-block mb-2" style="font-size: 1.75rem;"></i>

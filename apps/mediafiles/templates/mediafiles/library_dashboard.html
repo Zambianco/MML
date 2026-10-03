@@ -3,7 +3,38 @@
 {% block title %}Biblioteca | My Music Library{% endblock %}
 
 {% block extra_head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <style>
+    .artist-tile {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 0.9rem;
+        border-radius: var(--app-radius);
+        background: var(--app-bg-card-hover);
+        transition: background 0.15s, transform 0.15s;
+        min-width: 0;
+    }
+
+    .artist-tile:hover {
+        background: #333;
+        transform: translateY(-2px);
+    }
+
+    .artist-avatar {
+        width: 56px;
+        height: 56px;
+        flex: 0 0 56px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--app-accent), #0b6b2e);
+        color: #000;
+        font-size: 1.4rem;
+        font-weight: 800;
+    }
+
     .library-action-bar {
         display: flex;
         flex-wrap: wrap;
@@ -53,8 +84,57 @@
         padding-top: 0;
     }
 
+    .library-view-nav {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: var(--app-bg-primary);
+        padding-top: 0.5rem;
+    }
+
+    .library-view-nav .section-tabs {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding-bottom: 0.25rem;
+    }
+
+    .library-view-nav .nav-link {
+        white-space: nowrap;
+    }
+
+    .library-view [hidden] {
+        display: none !important;
+    }
+
+    .library-view[data-active-view="fontes"] [data-library-side] {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-content: start;
+        gap: 1.5rem;
+    }
+
+    .library-view[data-active-view="fontes"] [data-library-group="fontes"] {
+        margin-top: 0 !important;
+    }
+
+    .library-view[data-active-view="fontes"] .library-list-card[data-library-group="fontes"] {
+        grid-column: 1 / -1;
+    }
+
+    .library-view[data-active-view="acervo"] [data-library-group="acervo"] {
+        margin-top: 0 !important;
+    }
+
+    .library-view[data-active-view="pipeline"] [data-library-group="pipeline"] {
+        margin-top: 0 !important;
+    }
+
     @media (max-width: 768px) {
         .library-provider-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .library-view[data-active-view="fontes"] [data-library-side] {
             grid-template-columns: 1fr;
         }
     }
@@ -66,8 +146,8 @@
     <div class="app-page-header">
         <div>
             <p class="page-kicker mb-1">My Music Library</p>
-            <h1 class="h3 mb-1">Biblioteca musical</h1>
-            <p class="text-secondary mb-0">Acervo, fontes, backup e pipeline separados por area operacional.</p>
+            <h1 class="mb-1">Biblioteca musical</h1>
+            <p class="text-secondary mb-0">Explore seu acervo e acompanhe as tarefas da biblioteca.</p>
         </div>
         <form method="post" action="{% url 'scan-directories' %}">
             {% csrf_token %}
@@ -118,16 +198,18 @@
         </div>
     </div>
 
-    <ul class="nav section-tabs mb-4">
-        <li class="nav-item"><a class="nav-link active" href="#acervo">Acervo</a></li>
-        <li class="nav-item"><a class="nav-link" href="#fontes">Fontes e backup</a></li>
-        <li class="nav-item"><a class="nav-link" href="#pipeline">Pipeline</a></li>
-    </ul>
+    <nav class="library-view-nav mb-4" aria-label="Seções da biblioteca">
+        <ul class="nav section-tabs mb-0">
+            <li class="nav-item"><a class="nav-link active" href="#acervo" data-library-tab="acervo" aria-current="page">Acervo</a></li>
+            <li class="nav-item"><a class="nav-link" href="#fontes" data-library-tab="fontes">Fontes e backup</a></li>
+            <li class="nav-item"><a class="nav-link" href="#pipeline" data-library-tab="pipeline">Pipeline</a></li>
+        </ul>
+    </nav>
 
     <div class="library-action-bar">
         <div>
-            <div class="fw-semibold">Operacao da biblioteca</div>
-            <div class="small text-secondary">Acoes principais sem sair desta tela.</div>
+            <div class="fw-semibold">Acesso rápido</div>
+            <div class="small text-secondary">Continue em outras áreas da biblioteca.</div>
         </div>
         <div class="d-flex gap-2 flex-wrap">
             <a class="btn btn-outline-dark btn-sm" href="{% url 'downloads-files' %}">Revisar arquivos</a>
@@ -136,9 +218,9 @@
         </div>
     </div>
 
-    <div class="row g-4" id="acervo">
-        <section class="col-lg-8">
-            <div class="card shadow-sm border-0">
+    <div class="row g-4 library-view" data-active-view="acervo">
+        <section class="col-lg-8" id="acervo" data-library-main>
+            <div class="card shadow-sm border-0 mb-4">
                 <div class="card-body">
                     <div class="library-section-title">
                         <div>
@@ -148,28 +230,18 @@
                         <a class="btn btn-outline-dark btn-sm" href="{% url 'api-index' %}">Abrir API</a>
                     </div>
                     {% if recent_tracks %}
-                        <div class="table-responsive">
-                            <table class="table align-middle mb-0">
-                                <thead>
-                                    <tr>
-                                        <th>Faixa</th>
-                                        <th>Artista</th>
-                                        <th>Album</th>
-                                        <th>Arquivos</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for track in recent_tracks %}
-                                        <tr>
-                                            <td>{{ track.title }}</td>
-                                            <td>{{ track.artist.name }}</td>
-                                            <td>{{ track.album.title|default:"Single" }}</td>
-                                            <td>{{ track.file_count }}</td>
-                                        </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
+                        <ul class="media-list">
+                            {% for track in recent_tracks %}
+                                <li class="media-row" style="grid-template-columns: 56px minmax(0, 1fr) auto;">
+                                    <div class="media-row-icon"><i class="bi bi-music-note-beamed"></i></div>
+                                    <div>
+                                        <div class="media-row-title">{{ track.title }}</div>
+                                        <div class="media-row-sub">{{ track.artist.name }} · {{ track.album.title|default:"Single" }}</div>
+                                    </div>
+                                    <div class="media-row-end">{{ track.file_count }} arquivo{{ track.file_count|pluralize }}</div>
+                                </li>
+                            {% endfor %}
+                        </ul>
                     {% else %}
                         <p class="text-secondary mb-0">Nenhuma faixa cadastrada ainda.</p>
                     {% endif %}
@@ -187,9 +259,12 @@
                         <div class="row row-cols-1 row-cols-md-2 g-3">
                             {% for artist in featured_artists %}
                                 <div class="col">
-                                    <div class="border rounded p-3 h-100">
-                                        <strong class="d-block">{{ artist.name }}</strong>
-                                        <span class="text-secondary small">{{ artist.album_count }} album(ns) • {{ artist.track_count }} faixa(s)</span>
+                                    <div class="artist-tile">
+                                        <div class="artist-avatar">{{ artist.name|slice:":1"|upper }}</div>
+                                        <div class="min-w-0">
+                                            <strong class="d-block text-truncate">{{ artist.name }}</strong>
+                                            <span class="text-secondary small">{{ artist.album_count }} album(ns) • {{ artist.track_count }} faixa(s)</span>
+                                        </div>
                                     </div>
                                 </div>
                             {% endfor %}
@@ -201,8 +276,8 @@
             </div>
         </section>
 
-        <section class="col-lg-4">
-            <div class="card shadow-sm border-0" id="fontes">
+        <section class="col-lg-4" data-library-side>
+            <div class="card shadow-sm border-0" id="fontes" data-library-group="fontes">
                 <div class="card-body">
                     <div class="library-section-title">
                         <div>
@@ -232,7 +307,7 @@
                 </div>
             </div>
 
-            <div class="card shadow-sm border-0 mt-4">
+            <div class="card shadow-sm border-0 mt-4" data-library-group="fontes">
                 <div class="card-body">
                     <div class="library-section-title">
                         <div>
@@ -322,7 +397,7 @@
                 </div>
             </div>
 
-            <div class="card shadow-sm border-0 mt-4" id="pipeline">
+            <div class="card shadow-sm border-0 mt-4" id="pipeline" data-library-group="pipeline">
                 <div class="card-body">
                     <div class="library-section-title">
                         <div>
@@ -369,14 +444,17 @@
                         </div>
                     </div>
                     <div class="d-grid gap-2 mb-3">
-                        <form method="post" action="{% url 'reconcile-backups' %}">
-                            {% csrf_token %}
-                            <div class="mb-2">
-                                <label class="form-label small" for="{{ backup_reconcile_form.manifest_text.id_for_label }}">Manifesto do backup</label>
-                                {{ backup_reconcile_form.manifest_text }}
-                            </div>
-                            <button class="btn btn-outline-primary w-100" type="submit">Reenviar faltantes do manifesto</button>
-                        </form>
+                        <details class="mb-2">
+                            <summary class="small fw-semibold">Reenviar faltantes usando um manifesto</summary>
+                            <form class="mt-3" method="post" action="{% url 'reconcile-backups' %}">
+                                {% csrf_token %}
+                                <div class="mb-2">
+                                    <label class="form-label small" for="{{ backup_reconcile_form.manifest_text.id_for_label }}">Manifesto do backup</label>
+                                    {{ backup_reconcile_form.manifest_text }}
+                                </div>
+                                <button class="btn btn-outline-primary w-100" type="submit">Reenviar faltantes</button>
+                            </form>
+                        </details>
                         <form method="post" action="{% url 'queue-backups' %}">
                             {% csrf_token %}
                             <button class="btn btn-dark w-100" type="submit">Realizar backup</button>
@@ -385,9 +463,9 @@
                             {% csrf_token %}
                             <button class="btn btn-outline-secondary w-100" type="submit">Pausar backup</button>
                         </form>
-                        <form method="post" action="{% url 'queue-cleanup' %}">
+                        <form method="post" action="{% url 'queue-cleanup' %}" data-confirm-cleanup>
                             {% csrf_token %}
-                            <button class="btn btn-outline-danger w-100" type="submit">Excluir FLACs elegiveis</button>
+                            <button class="btn btn-outline-danger w-100" type="submit" {% if not cleanup_ready_count %}disabled{% endif %}>Excluir FLACs elegíveis ({{ cleanup_ready_count }})</button>
                         </form>
                     </div>
                     {% if pending_backups %}
@@ -415,7 +493,7 @@
                 </div>
             </div>
 
-            <div class="card shadow-sm border-0 mt-4 library-list-card">
+            <div class="card shadow-sm border-0 mt-4 library-list-card" data-library-group="acervo">
                 <div class="card-body">
                     <div class="library-section-title">
                         <div>
@@ -446,7 +524,7 @@
                 </div>
             </div>
 
-            <div class="card shadow-sm border-0 mt-4 library-list-card">
+            <div class="card shadow-sm border-0 mt-4 library-list-card" data-library-group="fontes">
                 <div class="card-body">
                     <div class="library-section-title">
                         <div>
@@ -505,6 +583,44 @@
     </div>
 </main>
 <script>
+    (() => {
+        const view = document.querySelector(".library-view");
+        const tabs = document.querySelectorAll("[data-library-tab]");
+        const groups = view.querySelectorAll("[data-library-group]");
+        const main = view.querySelector("[data-library-main]");
+        const side = view.querySelector("[data-library-side]");
+        const validViews = ["acervo", "fontes", "pipeline"];
+        const activate = (name) => {
+            const current = validViews.includes(name) ? name : "acervo";
+            view.dataset.activeView = current;
+            main.hidden = current !== "acervo";
+            side.classList.toggle("col-lg-4", current === "acervo");
+            side.classList.toggle("col-lg-12", current !== "acervo");
+            groups.forEach((group) => {
+                group.hidden = group.dataset.libraryGroup !== current;
+            });
+            tabs.forEach((tab) => {
+                const selected = tab.dataset.libraryTab === current;
+                tab.classList.toggle("active", selected);
+                if (selected) tab.setAttribute("aria-current", "page");
+                else tab.removeAttribute("aria-current");
+            });
+            try { sessionStorage.setItem("library-view", current); } catch (_) {}
+        };
+        let saved = "acervo";
+        try { saved = sessionStorage.getItem("library-view") || saved; } catch (_) {}
+        activate(location.hash ? location.hash.slice(1) : saved);
+        tabs.forEach((tab) => tab.addEventListener("click", (event) => {
+            event.preventDefault();
+            activate(tab.dataset.libraryTab);
+            history.replaceState(null, "", tab.getAttribute("href"));
+        }));
+        window.addEventListener("hashchange", () => activate(location.hash.slice(1)));
+        document.querySelector("[data-confirm-cleanup]").addEventListener("submit", (event) => {
+            if (!confirm("Excluir os FLACs locais elegíveis? Confirme que o backup está disponível.")) event.preventDefault();
+        });
+    })();
+
     (() => {
         const form = document.querySelector("[data-backup-form]");
         if (!form) {

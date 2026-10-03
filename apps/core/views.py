@@ -21,8 +21,8 @@ def pwa_manifest(request: HttpRequest) -> JsonResponse:
             "start_url": reverse("downloads-player"),
             "scope": reverse("downloads-player"),
             "display": "standalone",
-            "background_color": "#0f0a0a",
-            "theme_color": "#d4a373",
+            "background_color": "#121212",
+            "theme_color": "#1ed760",
             "icons": [
                 {
                     "src": static("core/pwa-icon-192.png"),
