@@ -65,9 +65,9 @@ print_failure_details() {
 
 wait_for_web() {
   echo "Aguardando web (gunicorn) aceitar conexoes..."
-  end_time=$(( $(date +%s) + 180 ))
+  end_time=$(( $(date +%s) + 600 ))
   while [ "$(date +%s)" -lt "$end_time" ]; do
-    if docker compose -f "$COMPOSE_FILE" exec -T web python -c "import socket; socket.create_connection(('127.0.0.1', 8000), 2).close()" >/dev/null 2>&1; then
+    if timeout 10 docker compose -f "$COMPOSE_FILE" exec -T web python -c "import socket; socket.create_connection(('127.0.0.1', 8000), 2).close()" >/dev/null 2>&1; then
       return 0
     fi
     echo "  ... $(docker compose -f "$COMPOSE_FILE" logs web --tail 1 2>&1 | tail -n 1)"
