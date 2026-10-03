@@ -115,8 +115,8 @@ unset GIT_ASKPASS GIT_TERMINAL_PROMPT
 
 echo "3/4 Subindo stack com build..."
 run_or_recover docker compose -f "$COMPOSE_FILE" up -d --build
-run_or_recover wait_for_web
 run_or_recover docker compose -f "$COMPOSE_FILE" exec -T nginx nginx -s reload
+run_or_recover wait_for_web
 
 echo "4/4 Status final dos servicos:"
 docker compose -f "$COMPOSE_FILE" ps
