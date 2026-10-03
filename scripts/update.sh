@@ -67,7 +67,7 @@ wait_for_web() {
   echo "Aguardando web (gunicorn) aceitar conexoes..."
   end_time=$(( $(date +%s) + 180 ))
   while [ "$(date +%s)" -lt "$end_time" ]; do
-    if docker compose -f "$COMPOSE_FILE" exec -T nginx nc -z -w 2 web 8000 >/dev/null 2>&1; then
+    if docker compose -f "$COMPOSE_FILE" exec -T web python -c "import socket; socket.create_connection(('127.0.0.1', 8000), 2).close()" >/dev/null 2>&1; then
       return 0
     fi
     sleep 3
