@@ -100,7 +100,7 @@ def build_search_query_variants(*, name: str, artists: str, album: str = "") -> 
     return variants
 
 
-def _slskd_request(method: str, path: str, payload=None):
+def _slskd_request(method: str, path: str, payload=None, timeout: float | None = None):
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
     urls = [f"{settings.SLSKD_BASE_URL}{path}"]
 
@@ -116,7 +116,7 @@ def _slskd_request(method: str, path: str, payload=None):
             },
         )
         try:
-            with urlopen(request, timeout=settings.SLSKD_REQUEST_TIMEOUT_SECONDS) as response:
+            with urlopen(request, timeout=timeout or settings.SLSKD_REQUEST_TIMEOUT_SECONDS) as response:
                 body = response.read()
                 return json.loads(body.decode("utf-8")) if body else None
         except (URLError, TimeoutError) as exc:

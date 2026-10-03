@@ -942,7 +942,7 @@ def cancel_round(request: HttpRequest, pk: int) -> HttpResponse:
 @require_http_methods(["GET"])
 def slskd_log(request: HttpRequest) -> HttpResponse:
     try:
-        entries = _slskd_request("GET", "/api/v0/logs") or []
+        entries = _slskd_request("GET", "/api/v0/logs", timeout=30) or []
     except (URLError, TimeoutError) as exc:
         return HttpResponse(escape(f"Nao foi possivel obter o log do slskd: {getattr(exc, 'reason', exc)}"))
     lines = [
