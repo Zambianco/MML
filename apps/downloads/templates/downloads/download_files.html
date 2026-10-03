@@ -8,7 +8,7 @@
         <div>
             <p class="page-kicker mb-1">Downloads</p>
             <h1 class="h3 mb-0 fw-bold">Arquivos baixados</h1>
-            <p class="text-secondary small mt-1 mb-0">Auditoria limpa dos arquivos locais, com filtros e revisao de metadados.</p>
+            <p class="text-secondary small mt-1 mb-0">Auditoria limpa dos arquivos locais, com filtros e revisão de metadados.</p>
         </div>
     </div>
 
@@ -50,24 +50,15 @@
         </div>
     </div>
 
-    <ul class="nav section-tabs mb-4">
-        <li class="nav-item">
-            <a class="nav-link {% if not selected_missing_metadata %}active{% endif %}" href="{% url 'downloads-files' %}">Todos</a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link {% if selected_missing_metadata %}active{% endif %}" href="{% url 'downloads-files' %}?missing_metadata=1">Sem metadados</a>
-        </li>
-    </ul>
-
     <div class="card shadow-sm border-0 mb-4">
         <div class="card-body">
             <form method="get" class="row g-3 align-items-end">
-                <div class="col-lg-5">
+                <div class="col-lg-4">
                     <label class="form-label small text-secondary" for="filter-q">Busca</label>
-                    <input class="form-control" id="filter-q" type="search" name="q" value="{{ query }}" placeholder="Nome ou caminho">
+                    <input class="form-control" id="filter-q" type="search" name="q" value="{{ query }}" placeholder="Nome ou caminho" autocomplete="off">
                 </div>
-                <div class="col-sm-4 col-lg-3">
-                    <label class="form-label small text-secondary" for="filter-ext">Extensao</label>
+                <div class="col-sm-6 col-lg-3">
+                    <label class="form-label small text-secondary" for="filter-ext">Extensão</label>
                     <select class="form-select" id="filter-ext" name="ext">
                         <option value="">Todas</option>
                         {% for ext in extensions %}
@@ -75,7 +66,7 @@
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-sm-4 col-lg-3">
+                <div class="col-sm-6 col-lg-3">
                     <label class="form-label small text-secondary" for="filter-root">Pasta</label>
                     <select class="form-select" id="filter-root" name="root">
                         <option value="">Todas</option>
@@ -84,14 +75,15 @@
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-sm-6 col-lg-1">
-                    <div class="form-check pt-sm-4 mt-sm-2">
+                <div class="col-sm-6 col-lg-2">
+                    <div class="form-check form-switch pt-sm-4 mt-sm-2">
                         <input class="form-check-input" id="filter-missing-metadata" type="checkbox" name="missing_metadata" value="1" {% if selected_missing_metadata %}checked{% endif %}>
-                        <label class="form-check-label small" for="filter-missing-metadata">Sem metadados</label>
+                        <label class="form-check-label small" for="filter-missing-metadata">Só sem metadados</label>
                     </div>
                 </div>
-                <div class="col-sm-6 col-lg-1 d-grid">
-                    <button class="btn btn-dark" type="submit">Filtrar</button>
+                <div class="col-sm-6 col-lg-12 d-flex gap-2 justify-content-lg-end">
+                    <a class="btn btn-outline-secondary" href="{% url 'downloads-files' %}">Limpar</a>
+                    <button class="btn btn-dark" type="submit"><i class="bi bi-funnel me-1"></i>Filtrar</button>
                 </div>
             </form>
         </div>
@@ -100,44 +92,40 @@
     <div class="card shadow-sm border-0">
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
-                <h2 class="h5 mb-0">Conteudo</h2>
-                <div class="small text-secondary">Lista compacta</div>
+                <h2 class="h5 mb-0">Conteúdo</h2>
+                <div class="small text-secondary">{{ file_count }} arquivo{{ file_count|pluralize }}</div>
             </div>
             {% if files %}
                 <div class="table-responsive">
-                    <table class="table table-sm align-middle mb-0">
-                        <thead>
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
                             <tr>
-                                <th>Caminho</th>
                                 <th>Arquivo</th>
                                 <th>Metadados</th>
-                                <th>Tamanho</th>
-                                <th>Modificado</th>
-                                <th>Origem</th>
+                                <th class="text-nowrap">Tamanho</th>
+                                <th class="text-nowrap">Modificado</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for file in files %}
                                 <tr>
-                                    <td class="text-break">
-                                        <i class="bi bi-file-earmark-music me-2 text-secondary"></i>{{ file.relative_path }}
+                                    <td class="text-break" style="min-width: 260px;">
+                                        <div class="fw-semibold"><i class="bi bi-file-earmark-music me-2 text-secondary"></i>{{ file.name }}</div>
+                                        <div class="small text-secondary">{{ file.relative_path }}</div>
+                                        <div class="small text-secondary opacity-75">{{ file.root }}</div>
                                         <audio class="w-100 mt-2 audio-inline" controls preload="none" src="{{ file.stream_url }}"></audio>
                                     </td>
-                                    <td class="text-break">{{ file.name }}</td>
                                     <td class="text-break small">
-                                        <div><strong>Titulo:</strong> {{ file.title }}</div>
-                                        <div><strong>Artista:</strong> {{ file.artist }}</div>
-                                        <div><strong>Album:</strong> {{ file.album }}</div>
-                                        <div><strong>Ano:</strong> {{ file.year|default:"-" }}</div>
+                                        <div class="fw-semibold">{{ file.title|default:"-" }}</div>
+                                        <div class="text-secondary">{{ file.artist|default:"-" }} · {{ file.album|default:"-" }}{% if file.year %} · {{ file.year }}{% endif %}</div>
                                         {% if file.has_missing_metadata %}
-                                            <span class="badge text-bg-warning mt-2">Faltando: {{ file.missing_metadata_fields|join:", " }}</span>
+                                            <span class="badge text-bg-warning mt-1"><i class="bi bi-exclamation-triangle me-1"></i>Faltando: {{ file.missing_metadata_fields|join:", " }}</span>
                                         {% else %}
-                                            <span class="badge text-bg-success mt-2">OK</span>
+                                            <span class="badge text-bg-success mt-1"><i class="bi bi-check2 me-1"></i>OK</span>
                                         {% endif %}
                                     </td>
-                                    <td>{{ file.size|filesizeformat }}</td>
-                                    <td>{{ file.modified_at|date:"d/m/Y H:i:s" }}</td>
-                                    <td class="text-break small text-secondary">{{ file.root }}</td>
+                                    <td class="text-nowrap small">{{ file.size|filesizeformat }}</td>
+                                    <td class="text-nowrap small">{{ file.modified_at|date:"d/m/Y H:i" }}</td>
                                 </tr>
                             {% endfor %}
                         </tbody>
@@ -146,7 +134,8 @@
             {% else %}
                 <div class="text-center py-5">
                     <i class="bi bi-folder2-open text-secondary d-block mb-2" style="font-size: 1.75rem;"></i>
-                    <p class="mb-0 text-secondary">Nenhum arquivo encontrado nas pastas configuradas.</p>
+                    <p class="mb-2 text-secondary">Nenhum arquivo encontrado.</p>
+                    <a class="btn btn-sm btn-outline-secondary" href="{% url 'downloads-files' %}">Limpar filtros</a>
                 </div>
             {% endif %}
         </div>

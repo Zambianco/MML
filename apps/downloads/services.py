@@ -15,7 +15,7 @@ from urllib.request import Request, urlopen
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import close_old_connections, transaction
 from django.utils import timezone
 
 from .models import TrackImport, TrackImportItem, TrackImportItemSource
@@ -697,10 +697,23 @@ def process_download_round(track_import: TrackImport, limit: int = 0, should_can
             summary["cancelled"] = 1
             break
 
-        batch_summary = _process_round_items(
-            list(_round_items_queryset(track_import, include_errors=True)),
-            should_cancel=should_cancel,
-        )
+        try:
+            close_old_connections()
+            recovered = recover_stuck_searches(track_import)
+            summary["queued"] += recovered["queued"] + recovered["downloading"]
+            summary["without_source"] += recovered["failed"]
+            batch_summary = _process_round_items(
+                list(_round_items_queryset(track_import, include_errors=True)),
+                should_cancel=should_cancel,
+            )
+        except Exception as exc:
+            track_import.processing_last_error = f"Erro na rodada, tentando novamente: {type(exc).__name__}: {exc}"[:1000]
+            try:
+                track_import.save(update_fields=["processing_last_error"])
+            except Exception:
+                pass
+            time.sleep(ROUND_IDLE_SLEEP_SECONDS)
+            continue
         for key, value in batch_summary.items():
             summary[key] += value
         if batch_summary["cancelled"]:

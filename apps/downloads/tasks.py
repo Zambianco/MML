@@ -22,7 +22,7 @@ def run_process_download_round(track_import_id: int, limit: int = 0, task_id: st
     try:
         return process_download_round(track_import, limit=limit, should_cancel=should_cancel)
     except Exception as exc:
-        track_import.processing_last_error = str(exc)
+        track_import.processing_last_error = f"{type(exc).__name__}: {exc}"[:1000]
         raise
     finally:
         track_import.processing_finished_at = timezone.now()

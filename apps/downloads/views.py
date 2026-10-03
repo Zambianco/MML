@@ -155,18 +155,15 @@ def _refresh_processing_state(track_import: TrackImport) -> None:
 
     if not task_id:
         if timezone.now() - started_at >= PROCESSING_STALE_AFTER:
-            _mark_processing_finished(track_import)
+            _mark_processing_finished(track_import, error="Processamento sem tarefa associada por mais de 1 hora; encerrado automaticamente.")
         return
 
     if task_id.startswith(LOCAL_TASK_PREFIX):
         if task_id not in LOCAL_PROCESSING_TASKS:
             if not has_active and timezone.now() - started_at >= PROCESSING_NO_SEARCH_GRACE:
-                _mark_processing_finished(track_import)
+                _mark_processing_finished(track_import, error="O processo local foi interrompido (servidor reiniciado ou thread encerrada). Inicie a busca novamente.")
             elif has_active and timezone.now() - started_at >= PROCESSING_STALE_AFTER:
-                _mark_processing_finished(track_import)
-        else:
-            if timezone.now() - started_at >= PROCESSING_STALE_AFTER:
-                _mark_processing_finished(track_import)
+                _mark_processing_finished(track_import, error="O processo local foi interrompido durante uma busca (servidor reiniciado ou thread encerrada). Inicie a busca novamente.")
         return
 
     if not has_active and timezone.now() - started_at < PROCESSING_NO_SEARCH_GRACE:
@@ -176,13 +173,13 @@ def _refresh_processing_state(track_import: TrackImport) -> None:
         task_state = current_app.AsyncResult(task_id).state
     except Exception:
         if timezone.now() - started_at >= PROCESSING_STALE_AFTER:
-            _mark_processing_finished(track_import)
+            _mark_processing_finished(track_import, error="Nao foi possivel consultar o estado da tarefa Celery (broker/backend indisponivel) por mais de 1 hora.")
         return
 
     if task_state in READY_STATES:
         error = ""
         if task_state != "SUCCESS":
-            error = f"Rodada anterior encerrada com estado {task_state.lower()}."
+            error = f"Tarefa Celery encerrada com estado {task_state.lower()} (worker reiniciado, limite de tempo ou falha). Veja o log do worker."
         _mark_processing_finished(track_import, error=error)
         return
 
@@ -195,7 +192,7 @@ def _refresh_processing_state(track_import: TrackImport) -> None:
             return
 
     if timezone.now() - started_at >= PROCESSING_STALE_AFTER:
-        _mark_processing_finished(track_import)
+        _mark_processing_finished(track_import, error=f"Tarefa Celery ({task_state.lower()}) excedeu 1 hora e foi encerrada automaticamente.")
 
 
 def _download_roots() -> list[Path]:
