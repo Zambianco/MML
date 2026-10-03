@@ -701,7 +701,7 @@ def _import_detail_context(
             update_download_statuses(track_import, enqueue_next=False)
         except (URLError, TimeoutError) as exc:
             if request is not None:
-                messages.error(request, f"Nao foi possivel conectar ao slskd: {exc.reason}")
+                messages.error(request, f"Nao foi possivel conectar ao slskd: {getattr(exc, "reason", exc)}")
         else:
             track_import = TrackImport.objects.get(pk=track_import.pk)
     status_counts = dict(track_import.items.values_list("status").annotate(total=Count("id")))
@@ -958,7 +958,7 @@ def refresh_status(request: HttpRequest, pk: int) -> HttpResponse:
     try:
         summary = update_download_statuses(track_import)
     except (URLError, TimeoutError) as exc:
-        messages.error(request, f"Nao foi possivel conectar ao slskd: {exc.reason}")
+        messages.error(request, f"Nao foi possivel conectar ao slskd: {getattr(exc, "reason", exc)}")
     else:
         messages.success(
             request,
@@ -974,7 +974,7 @@ def item_search(request: HttpRequest, pk: int, item_pk: int) -> HttpResponse:
     try:
         search_slskd_sources(item)
     except (URLError, TimeoutError) as exc:
-        messages.error(request, f"Nao foi possivel conectar ao slskd: {exc.reason}")
+        messages.error(request, f"Nao foi possivel conectar ao slskd: {getattr(exc, "reason", exc)}")
     except Exception:
         messages.error(request, "Falha ao buscar fontes no slskd.")
     else:
@@ -1009,7 +1009,7 @@ def item_transfer(request: HttpRequest, pk: int, item_pk: int) -> HttpResponse:
     try:
         source = enqueue_best_available_source(item)
     except (URLError, TimeoutError) as exc:
-        messages.error(request, f"Nao foi possivel conectar ao slskd: {exc.reason}")
+        messages.error(request, f"Nao foi possivel conectar ao slskd: {getattr(exc, "reason", exc)}")
     except ValueError as exc:
         messages.error(request, str(exc))
     except Exception:
@@ -1029,7 +1029,7 @@ def item_skip_source(request: HttpRequest, pk: int, item_pk: int) -> HttpRespons
     try:
         source = skip_item_download(item)
     except (URLError, TimeoutError) as exc:
-        messages.error(request, f"Nao foi possivel conectar ao slskd: {exc.reason}")
+        messages.error(request, f"Nao foi possivel conectar ao slskd: {getattr(exc, "reason", exc)}")
     except ValueError as exc:
         messages.error(request, str(exc))
     except Exception:
