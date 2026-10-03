@@ -197,4 +197,18 @@
 <main class="container app-page py-4">
     {% include "downloads/import_detail_fragment.html" %}
 </main>
+
+<div class="modal fade" id="slskd-log-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Log do slskd</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+                <pre id="slskd-log-body" class="small mb-0" style="white-space: pre-wrap;">Carregando...</pre>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}

@@ -247,6 +247,7 @@
                                 {% endif %}
                                 {% if item.last_error %}
                                     <div class="small text-danger">{{ item.last_error }}</div>
+                                    <button type="button" class="btn btn-link btn-sm p-0" data-bs-toggle="modal" data-bs-target="#slskd-log-modal" hx-get="{% url 'downloads-slskd-log' %}" hx-target="#slskd-log-body" hx-swap="innerHTML">Ver log do slskd</button>
                                 {% endif %}
                                 <form class="mt-2" method="post" action="{% url 'downloads-item-search' track_import.pk item.pk %}{% if querystring %}?{{ querystring }}&page={{ page_obj.number }}{% else %}?page={{ page_obj.number }}{% endif %}">
                                     {% csrf_token %}
@@ -381,7 +382,9 @@
                     </div>
 
                     {% if item.last_error %}
-                        <div class="small text-danger mb-3">{{ item.last_error }}</div>
+                        <div class="small text-danger mb-3">{{ item.last_error }}
+                            <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-bs-toggle="modal" data-bs-target="#slskd-log-modal" hx-get="{% url 'downloads-slskd-log' %}" hx-target="#slskd-log-body" hx-swap="innerHTML">Ver log do slskd</button>
+                        </div>
                     {% endif %}
 
                     <div class="d-flex gap-2 flex-wrap">

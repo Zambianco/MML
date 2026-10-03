@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Callable
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
@@ -181,7 +181,16 @@ def search_slskd_sources(
 ) -> list[TrackImportItemSource]:
     search_query = sync_item_search_query(item)
 
-    search = _slskd_request("POST", "/api/v0/searches", {"searchText": search_query})
+    try:
+        search = _slskd_request("POST", "/api/v0/searches", {"searchText": search_query})
+    except HTTPError as exc:
+        if exc.code != 409:
+            raise
+        # slskd recusa buscas com texto igual a uma já existente; remove as antigas e tenta de novo.
+        for old in _slskd_request("GET", "/api/v0/searches") or []:
+            if str(old.get("searchText") or "").strip().lower() == search_query.strip().lower():
+                _slskd_request("DELETE", f"/api/v0/searches/{old['id']}")
+        search = _slskd_request("POST", "/api/v0/searches", {"searchText": search_query})
     search_id = search["id"]
     started_at = time.monotonic()
     item.search_attempts += 1

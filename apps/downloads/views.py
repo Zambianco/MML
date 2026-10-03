@@ -23,6 +23,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_http_methods, require_POST
 from django.conf import settings
 from django.utils import timezone
+from django.utils.html import escape
 from urllib.error import URLError
 
 try:
@@ -47,6 +48,7 @@ from .services import (
     search_slskd_sources,
     skip_item_download,
     update_download_statuses,
+    _slskd_request,
 )
 from .tasks import process_download_round_task, run_process_download_round
 
@@ -935,6 +937,19 @@ def cancel_round(request: HttpRequest, pk: int) -> HttpResponse:
         track_import.save(update_fields=["cancel_requested_at"])
         messages.warning(request, "Cancelamento solicitado. A rodada vai parar no proximo item.")
     return redirect(_import_detail_url(track_import, page=request.GET.get("page"), querystring=_preserved_import_querystring(request)))
+
+
+@require_http_methods(["GET"])
+def slskd_log(request: HttpRequest) -> HttpResponse:
+    try:
+        entries = _slskd_request("GET", "/api/v0/logs") or []
+    except (URLError, TimeoutError) as exc:
+        return HttpResponse(escape(f"Nao foi possivel obter o log do slskd: {getattr(exc, 'reason', exc)}"))
+    lines = [
+        f"{entry.get('timestamp', '')} [{entry.get('level', '')}] {entry.get('message', '')}"
+        for entry in entries[-200:]
+    ]
+    return HttpResponse(escape("\n".join(reversed(lines)) or "Log vazio."))
 
 
 @require_http_methods(["POST"])

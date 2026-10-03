@@ -1,12 +1,13 @@
 from django.urls import path
 
-from .views import cancel_round, download_files, file_cover, file_stream, import_detail, import_detail_fragment, import_list, item_download, item_query, item_search, item_skip_source, item_stream, item_transfer, music_player, process_round, refresh_status, toggle_favorite
+from .views import cancel_round, download_files, file_cover, file_stream, import_detail, import_detail_fragment, import_list, item_download, item_query, item_search, item_skip_source, item_stream, item_transfer, music_player, process_round, refresh_status, slskd_log, toggle_favorite
 
 urlpatterns = [
     path("", import_list, name="downloads-import-list"),
     path("arquivos/", download_files, name="downloads-files"),
     path("arquivos/tocar/", file_stream, name="downloads-file-stream"),
     path("arquivos/capa/", file_cover, name="downloads-file-cover"),
+    path("slskd/log/", slskd_log, name="downloads-slskd-log"),
     path("player/", music_player, name="downloads-player"),
     path("player/favoritos/toggle/", toggle_favorite, name="downloads-toggle-favorite"),
     path("<int:pk>/", import_detail, name="downloads-import-detail"),
