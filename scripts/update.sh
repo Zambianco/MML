@@ -63,22 +63,16 @@ print_failure_details() {
   docker compose -f "$COMPOSE_FILE" logs web --tail 120 >&2 || true
 }
 
-wait_for_health() {
-  echo "Aguardando nginx ficar saudavel..."
+wait_for_web() {
+  echo "Aguardando web (gunicorn) aceitar conexoes..."
   end_time=$(( $(date +%s) + 180 ))
   while [ "$(date +%s)" -lt "$end_time" ]; do
-    status="$(docker compose -f "$COMPOSE_FILE" ps --format json nginx 2>/dev/null | sed -n 's/.*"Health":"\([^"]*\)".*/\1/p')"
-    if [ "$status" = "healthy" ]; then
+    if docker compose -f "$COMPOSE_FILE" exec -T nginx nc -z -w 2 web 8000 >/dev/null 2>&1; then
       return 0
     fi
-    if [ "$status" = "unhealthy" ]; then
-      echo "Nginx ficou unhealthy." >&2
-      print_failure_details
-      return 1
-    fi
-    sleep 5
+    sleep 3
   done
-  echo "Timeout aguardando healthcheck do nginx." >&2
+  echo "Timeout aguardando o web na porta 8000." >&2
   print_failure_details
   return 1
 }
@@ -120,7 +114,7 @@ unset GIT_ASKPASS GIT_TERMINAL_PROMPT
 
 echo "3/4 Subindo stack com build..."
 run_or_recover docker compose -f "$COMPOSE_FILE" up -d --build
-run_or_recover wait_for_health
+run_or_recover wait_for_web
 run_or_recover docker compose -f "$COMPOSE_FILE" exec -T nginx nginx -s reload
 
 echo "4/4 Status final dos servicos:"
