@@ -1,8 +1,10 @@
+import tempfile
+import zipfile
 from pathlib import Path
 
 from django.contrib import messages
 from django.db.models import Count
-from django.http import HttpRequest, HttpResponse
+from django.http import FileResponse, Http404, HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
@@ -11,7 +13,7 @@ from apps.core.audio import stream_audio_file
 from apps.library.models import Album, Artist, Track
 from apps.scanner.tasks import scan_monitored_directories_task
 
-from .backup import get_backup_control, pending_backup_queryset, pause_backup_control, reconcile_backup_manifest, resume_backup_control
+from .backup import get_backup_control, pending_backup_queryset, pause_backup_control, reconcile_backup_manifest, resolve_media_file_path, resume_backup_control
 from .forms import BackupReconciliationForm, BackupTargetForm, MonitoredDirectoryForm
 from .models import BackupTarget, MediaFile, MonitoredDirectory
 from .services import cleanup_ready_queryset, preferred_media_file_for_track
@@ -187,3 +189,40 @@ def media_file_stream(request: HttpRequest, pk: int) -> HttpResponse:
     if not file_path.is_file():
         return HttpResponse(status=404)
     return stream_audio_file(request, file_path)
+
+
+def manual_backup(request: HttpRequest) -> HttpResponse:
+    items = []
+    for media_file in pending_backup_queryset().select_related("track", "track__artist").order_by("track__artist__name", "track__title", "id"):
+        path = resolve_media_file_path(media_file)
+        items.append({"media_file": media_file, "filename": path.name, "available": path.is_file()})
+    return render(request, "mediafiles/manual_backup.html", {"items": items, "available_count": sum(1 for item in items if item["available"])})
+
+
+def manual_backup_download(request: HttpRequest, pk: int) -> HttpResponse:
+    media_file = get_object_or_404(pending_backup_queryset(), pk=pk)
+    path = resolve_media_file_path(media_file)
+    if not path.is_file():
+        raise Http404("Arquivo indisponivel.")
+    return FileResponse(path.open("rb"), as_attachment=True, filename=path.name)
+
+
+@require_POST
+def manual_backup_download_batch(request: HttpRequest) -> HttpResponse:
+    ids = [int(value) for value in request.POST.getlist("media_file_ids") if value.isdigit()]
+    archive = tempfile.TemporaryFile()
+    used_names: set[str] = set()
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_STORED) as zip_file:
+        for media_file in pending_backup_queryset().filter(pk__in=ids):
+            path = resolve_media_file_path(media_file)
+            if not path.is_file():
+                continue
+            name = path.name if path.name not in used_names else f"{media_file.sha256[:8]}_{path.name}"
+            used_names.add(name)
+            zip_file.write(path, arcname=name)
+    if not used_names:
+        archive.close()
+        messages.warning(request, "Nenhum arquivo disponivel foi selecionado.")
+        return redirect(reverse("manual-backup"))
+    archive.seek(0)
+    return FileResponse(archive, as_attachment=True, filename="backup-faltantes.zip", content_type="application/zip")

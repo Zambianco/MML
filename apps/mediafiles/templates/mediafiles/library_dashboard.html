@@ -459,6 +459,7 @@
                             {% csrf_token %}
                             <button class="btn btn-dark w-100" type="submit">Realizar backup</button>
                         </form>
+                        <a class="btn btn-outline-primary w-100" href="{% url 'manual-backup' %}">Backup manual (download)</a>
                         <form method="post" action="{% url 'pause-backups' %}">
                             {% csrf_token %}
                             <button class="btn btn-outline-secondary w-100" type="submit">Pausar backup</button>

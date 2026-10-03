@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Backup manual | My Music Library{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h1 class="h4 mb-1">Backup manual</h1>
+            <div class="small text-secondary">{{ items|length }} faltante(s), {{ available_count }} disponivel(is) para download.</div>
+        </div>
+        <a class="btn btn-outline-secondary" href="{% url 'library-dashboard' %}">Voltar</a>
+    </div>
+
+    {% if items %}
+    <form method="post" action="{% url 'manual-backup-download-batch' %}">
+        {% csrf_token %}
+        <div class="d-flex align-items-center gap-3 mb-2">
+            <div class="form-check mb-0">
+                <input class="form-check-input" type="checkbox" id="select-all">
+                <label class="form-check-label small" for="select-all">Selecionar todos</label>
+            </div>
+            <button class="btn btn-dark btn-sm" type="submit">Baixar selecionados (.zip)</button>
+        </div>
+        <div class="list-group">
+            {% for item in items %}
+            <div class="list-group-item d-flex align-items-center gap-3">
+                <input class="form-check-input mt-0 item-check" type="checkbox" name="media_file_ids" value="{{ item.media_file.id }}" {% if not item.available %}disabled{% endif %}>
+                <div class="flex-grow-1 text-break">
+                    <div class="fw-semibold">{{ item.media_file.track.title|default:item.filename }}</div>
+                    <div class="small text-secondary">{% if item.media_file.track.artist %}{{ item.media_file.track.artist }} &middot; {% endif %}{{ item.filename }}</div>
+                </div>
+                {% if item.available %}
+                    <a class="btn btn-outline-primary btn-sm" href="{% url 'manual-backup-download' item.media_file.id %}">Baixar</a>
+                {% else %}
+                    <span class="badge text-bg-secondary">Indisponivel</span>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </form>
+    <script>
+        document.getElementById("select-all").addEventListener("change", function () {
+            var checked = this.checked;
+            document.querySelectorAll(".item-check:not(:disabled)").forEach(function (box) { box.checked = checked; });
+        });
+    </script>
+    {% else %}
+    <div class="alert alert-success">Nenhum backup faltante.</div>
+    {% endif %}
+</div>
+{% endblock %}
