@@ -37,9 +37,11 @@ from apps.mediafiles.services import preferred_media_paths
 from apps.playback.models import FavoriteTrack
 from apps.scanner.services import AUDIO_EXTENSIONS, MutagenFile
 
-from .forms import TrackImportUploadForm
+from .forms import ManifestUploadForm, TrackImportUploadForm
 from .models import TrackImport, TrackImportItem
 from .services import (
+    apply_manifest,
+    build_done_manifest_csv,
     create_track_import,
     enqueue_best_available_source,
     refresh_auto_item_search_query,
@@ -156,7 +158,10 @@ def _refresh_processing_state(track_import: TrackImport) -> None:
     has_active = _has_active_search(track_import)
 
     if not task_id:
-        if timezone.now() - started_at >= PROCESSING_STALE_AFTER:
+        elapsed = timezone.now() - started_at
+        if not has_active and (track_import.cancel_requested_at is not None or elapsed >= PROCESSING_NO_SEARCH_GRACE):
+            _mark_processing_finished(track_import, error="Processamento sem tarefa associada e sem buscas ativas; encerrado.")
+        elif elapsed >= PROCESSING_STALE_AFTER:
             _mark_processing_finished(track_import, error="Processamento sem tarefa associada por mais de 1 hora; encerrado automaticamente.")
         return
 
@@ -767,6 +772,31 @@ def import_list(request: HttpRequest) -> HttpResponse:
         "imports": imports,
     }
     return render(request, "downloads/import_list.html", context)
+
+
+def manifest_upload(request: HttpRequest) -> HttpResponse:
+    form = ManifestUploadForm()
+    if request.method == "POST":
+        form = ManifestUploadForm(request.POST, request.FILES)
+        if form.is_valid():
+            try:
+                summary = apply_manifest(form.cleaned_data["manifest_text"])
+            except ValidationError as exc:
+                form.add_error(None, exc.message)
+            else:
+                messages.success(
+                    request,
+                    f"{summary['manifest_isrcs']} ISRCs lidos. {summary['completed']} itens marcados como concluidos.",
+                )
+                return redirect(reverse("downloads-manifest"))
+    return render(request, "downloads/manifest_upload.html", {"form": form})
+
+
+def manifest_export(request: HttpRequest) -> HttpResponse:
+    content, _count = build_done_manifest_csv()
+    response = HttpResponse(content, content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = 'attachment; filename="manifesto_concluidos.csv"'
+    return response
 
 
 def download_files(request: HttpRequest) -> HttpResponse:

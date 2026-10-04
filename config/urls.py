@@ -1,4 +1,6 @@
+from django.conf import settings
 from django.contrib import admin
+from django.contrib.staticfiles.views import serve as serve_static
 from django.urls import include, path
 
 urlpatterns = [
@@ -9,3 +11,6 @@ urlpatterns = [
     path("library/", include("apps.mediafiles.urls")),
     path("api/", include("apps.api.urls")),
 ]
+
+if settings.DEBUG:
+    urlpatterns += [path("static/<path:path>", serve_static, {"insecure": True})]

@@ -5,6 +5,7 @@ import json
 import re
 import time
 import unicodedata
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -23,9 +24,12 @@ from .models import TrackImport, TrackImportItem, TrackImportItemSource
 REQUIRED_HEADERS = {"name", "artists"}
 HEADER_ALIASES = {
     "nome": "name",
+    "track name": "name",
     "artista": "artists",
     "artistas": "artists",
+    "artist name(s)": "artists",
     "album": "album",
+    "album name": "album",
     "ano": "year",
     "isrc": "isrc",
 }
@@ -33,6 +37,9 @@ ISRC_PATTERN = re.compile(r"^[A-Z]{2}[A-Z0-9]{3}\d{7}$")
 MAX_SOURCES_PER_ITEM = 10
 SEARCH_STATUS_INTERVAL_SECONDS = 5
 SEARCH_TIMEOUT_SECONDS = 90
+SEARCH_CONNECT_WAIT_SECONDS = 20
+SEARCH_STOP_WAIT_SECONDS = 5
+SEARCH_POST_SPACING_SECONDS = 1
 ROUND_IDLE_SLEEP_SECONDS = 10
 DOWNLOAD_STALE_TIMEOUT = 6 * 60 * 60
 
@@ -130,6 +137,11 @@ def _clean_text(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", normalized.lower()).strip()
 
 
+def _matches_artist(filename: str, item: TrackImportItem) -> bool:
+    artist = _clean_text(re.split(r"[,;]", item.artists or "")[0])
+    return not artist or f" {artist} " in f" {_clean_text(filename)} "
+
+
 def score_slskd_source(response: dict, file_data: dict, item: TrackImportItem) -> float:
     extension = str(file_data.get("extension") or "").lower()
     filename = str(file_data.get("filename") or "")
@@ -156,6 +168,8 @@ def score_slskd_source(response: dict, file_data: dict, item: TrackImportItem) -
         score -= 2500
 
     filename_clean = _clean_text(filename)
+    if _matches_artist(filename, item):
+        score += 3000
     for penalty in ("live", "instrumental", "karaoke", "tribute", "cover", "remix", "demo", "radio edit"):
         if penalty in filename_clean:
             score -= 500
@@ -193,6 +207,16 @@ def sync_item_search_query(item: TrackImportItem) -> str:
 def _delete_slskd_searches(search_ids: list[str]) -> None:
     for search_id in search_ids:
         try:
+            # Para a busca e espera ela finalizar antes de apagar, evitando
+            # DbUpdateConcurrencyException no slskd ao finalizar um registro removido.
+            status = _slskd_request("GET", f"/api/v0/searches/{search_id}") or {}
+            if not status.get("isComplete"):
+                _slskd_request("PUT", f"/api/v0/searches/{search_id}")
+                deadline = time.monotonic() + SEARCH_STOP_WAIT_SECONDS
+                while time.monotonic() < deadline:
+                    time.sleep(0.5)
+                    if (_slskd_request("GET", f"/api/v0/searches/{search_id}") or {}).get("isComplete"):
+                        break
             _slskd_request("DELETE", f"/api/v0/searches/{search_id}")
         except (URLError, TimeoutError):
             pass
@@ -206,6 +230,18 @@ def _merge_slskd_responses(responses_per_search: list[list[dict]]) -> list[dict]
             known = {file_data.get("filename") for file_data in entry["files"]}
             entry["files"].extend(f for f in response.get("files", []) if f.get("filename") not in known)
     return list(merged.values())
+
+
+def _post_slskd_search(query: str) -> str:
+    # slskd responde 409 enquanto está (re)conectando; aguarda o login antes de desistir.
+    deadline = time.monotonic() + SEARCH_CONNECT_WAIT_SECONDS
+    while True:
+        try:
+            return str(_slskd_request("POST", "/api/v0/searches", {"searchText": query})["id"])
+        except HTTPError as exc:
+            if exc.code != 409 or time.monotonic() >= deadline:
+                raise
+            time.sleep(2)
 
 
 def search_slskd_sources(
@@ -222,8 +258,10 @@ def search_slskd_sources(
 
     search_ids: list[str] = []
     try:
-        for query in queries:
-            search_ids.append(str(_slskd_request("POST", "/api/v0/searches", {"searchText": query})["id"]))
+        for index, query in enumerate(queries):
+            if index:
+                time.sleep(SEARCH_POST_SPACING_SECONDS)
+            search_ids.append(_post_slskd_search(query))
     except HTTPError as exc:
         _delete_slskd_searches(search_ids)
         if exc.code != 409:
@@ -291,6 +329,8 @@ def _save_ranked_sources(item: TrackImportItem, responses: list[dict], max_sourc
     ranked: list[tuple[float, dict, dict]] = []
     for response in responses:
         for file_data in response.get("files", []):
+            if not _matches_artist(str(file_data.get("filename") or ""), item):
+                continue
             ranked.append((score_slskd_source(response, file_data, item), response, file_data))
     ranked.sort(key=lambda source: source[0], reverse=True)
 
@@ -678,52 +718,79 @@ def _round_items_queryset(track_import: TrackImport, *, include_errors: bool = T
     return track_import.items.filter(status__in=statuses).order_by("search_attempts", "row_number", "id")
 
 
+def _process_single_item(item: TrackImportItem, should_cancel: Callable[[], bool] | None = None) -> dict[str, int]:
+    summary = {"searched": 0, "queued": 0, "without_source": 0, "cancelled": 0}
+    if should_cancel is not None and should_cancel():
+        summary["cancelled"] = 1
+        return summary
+
+    item.status = TrackImportItem.STATUS_SEARCHING
+    item.save(update_fields=["status", "updated_at"])
+    try:
+        if should_cancel is None:
+            sources = search_slskd_sources(item)
+        else:
+            sources = search_slskd_sources(item, should_cancel=should_cancel)
+    except Exception as exc:
+        item.status = TrackImportItem.STATUS_ERROR
+        item.last_error = f"Falha ao buscar no slskd: {exc}"
+        item.save(update_fields=["status", "last_error", "updated_at"])
+        summary["without_source"] += 1
+        return summary
+    summary["searched"] += 1
+
+    if should_cancel is not None and should_cancel():
+        item.status = TrackImportItem.STATUS_PENDING
+        item.save(update_fields=["status", "updated_at"])
+        summary["cancelled"] = 1
+        return summary
+
+    source = sources[0] if sources else None
+    if not source:
+        item.status = TrackImportItem.STATUS_ERROR
+        item.last_error = "Nenhuma fonte encontrada no slskd."
+        item.save(update_fields=["status", "last_error", "updated_at"])
+        summary["without_source"] += 1
+        return summary
+
+    try:
+        enqueue_source(source)
+    except Exception as exc:
+        item.status = TrackImportItem.STATUS_ERROR
+        item.last_error = f"Falha ao enfileirar download no slskd: {exc}"
+        item.save(update_fields=["status", "last_error", "updated_at"])
+        summary["without_source"] += 1
+        return summary
+    summary["queued"] += 1
+    return summary
+
+
+def _process_item_in_thread(item: TrackImportItem, should_cancel: Callable[[], bool] | None) -> dict[str, int]:
+    close_old_connections()
+    try:
+        return _process_single_item(item, should_cancel)
+    finally:
+        close_old_connections()
+
+
 def _process_round_items(items, should_cancel: Callable[[], bool] | None = None) -> dict[str, int]:
     summary = {"searched": 0, "queued": 0, "without_source": 0, "cancelled": 0}
-    for item in items:
-        if should_cancel is not None and should_cancel():
-            summary["cancelled"] = 1
-            break
+    items = list(items)
+    workers = max(1, min(int(getattr(settings, "SLSKD_SEARCH_WORKERS", 1)), len(items) or 1))
 
-        item.status = TrackImportItem.STATUS_SEARCHING
-        item.save(update_fields=["status", "updated_at"])
-        try:
-            if should_cancel is None:
-                sources = search_slskd_sources(item)
-            else:
-                sources = search_slskd_sources(item, should_cancel=should_cancel)
-        except Exception as exc:
-            item.status = TrackImportItem.STATUS_ERROR
-            item.last_error = f"Falha ao buscar no slskd: {exc}"
-            item.save(update_fields=["status", "last_error", "updated_at"])
-            summary["without_source"] += 1
-            continue
-        summary["searched"] += 1
+    if workers == 1:
+        for item in items:
+            result = _process_single_item(item, should_cancel)
+            for key, value in result.items():
+                summary[key] += value
+            if result["cancelled"]:
+                break
+        return summary
 
-        if should_cancel is not None and should_cancel():
-            item.status = TrackImportItem.STATUS_PENDING
-            item.save(update_fields=["status", "updated_at"])
-            summary["cancelled"] = 1
-            break
-
-        source = sources[0] if sources else None
-        if not source:
-            item.status = TrackImportItem.STATUS_ERROR
-            item.last_error = "Nenhuma fonte encontrada no slskd."
-            item.save(update_fields=["status", "last_error", "updated_at"])
-            summary["without_source"] += 1
-            continue
-
-        try:
-            enqueue_source(source)
-        except Exception as exc:
-            item.status = TrackImportItem.STATUS_ERROR
-            item.last_error = f"Falha ao enfileirar download no slskd: {exc}"
-            item.save(update_fields=["status", "last_error", "updated_at"])
-            summary["without_source"] += 1
-            continue
-        summary["queued"] += 1
-
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        for result in executor.map(lambda item: _process_item_in_thread(item, should_cancel), items):
+            for key, value in result.items():
+                summary[key] += value
     return summary
 
 
@@ -875,3 +942,33 @@ def create_track_import(uploaded_file) -> TrackImport:
         ]
     )
     return track_import
+
+
+MANIFEST_ISRC_RE = re.compile(r"(?<![A-Z0-9])[A-Z]{2}[A-Z0-9]{3}\d{7}(?![A-Z0-9])")
+
+
+def apply_manifest(manifest_text: str) -> dict[str, int]:
+    isrcs = set(MANIFEST_ISRC_RE.findall(manifest_text.upper().replace("-", "")))
+    if not isrcs:
+        raise ValidationError("Nenhum ISRC valido foi encontrado no manifesto.")
+    completed = TrackImportItem.objects.filter(isrc__in=isrcs).exclude(status=TrackImportItem.STATUS_DONE).update(
+        status=TrackImportItem.STATUS_DONE,
+        download_progress=100,
+        last_error="",
+        updated_at=timezone.now(),
+    )
+    return {"manifest_isrcs": len(isrcs), "completed": completed}
+
+
+def build_done_manifest_csv() -> tuple[str, int]:
+    items = TrackImportItem.objects.filter(status=TrackImportItem.STATUS_DONE).exclude(isrc="").order_by("isrc", "id")
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=";")
+    writer.writerow(["ISRC", "Nome", "Artista(s)", "Album"])
+    seen: set[str] = set()
+    for item in items:
+        if item.isrc in seen:
+            continue
+        seen.add(item.isrc)
+        writer.writerow([item.isrc, item.name, item.artists, item.album])
+    return output.getvalue(), len(seen)

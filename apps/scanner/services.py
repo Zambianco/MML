@@ -3,6 +3,7 @@ from difflib import SequenceMatcher
 import hashlib
 import mimetypes
 from pathlib import Path
+from typing import Callable
 import re
 import shutil
 from uuid import UUID
@@ -76,7 +77,14 @@ class DuplicateDecision:
     needs_review: bool = False
 
 
-def scan_monitored_directories(directory_ids: list[int] | None = None) -> ScanResult:
+HASHED_FILENAME_RE = re.compile(r"[0-9a-f]{64}")
+
+
+def scan_monitored_directories(
+    directory_ids: list[int] | None = None,
+    delete_duplicates: bool = False,
+    progress: Callable[[str], None] | None = None,
+) -> ScanResult:
     queryset = MonitoredDirectory.objects.filter(is_active=True)
     if directory_ids:
         queryset = queryset.filter(id__in=directory_ids)
@@ -90,7 +98,7 @@ def scan_monitored_directories(directory_ids: list[int] | None = None) -> ScanRe
     }
 
     for directory in queryset:
-        result = scan_directory(directory)
+        result = scan_directory(directory, delete_duplicates=delete_duplicates, progress=progress)
         totals["directories_scanned"] += result.directories_scanned
         totals["files_seen"] += result.files_seen
         totals["files_created"] += result.files_created
@@ -100,7 +108,11 @@ def scan_monitored_directories(directory_ids: list[int] | None = None) -> ScanRe
     return ScanResult(**totals)
 
 
-def scan_directory(directory: MonitoredDirectory) -> ScanResult:
+def scan_directory(
+    directory: MonitoredDirectory,
+    delete_duplicates: bool = False,
+    progress: Callable[[str], None] | None = None,
+) -> ScanResult:
     root = Path(directory.path)
     if not root.is_dir():
         return ScanResult(missing_directories=1)
@@ -109,15 +121,35 @@ def scan_directory(directory: MonitoredDirectory) -> ScanResult:
     files_created = 0
     files_updated = 0
 
-    for path in root.rglob("*"):
-        if not path.is_file() or path.suffix.lower() not in AUDIO_EXTENSIONS:
-            continue
+    audio_paths = [path for path in root.rglob("*") if path.is_file() and path.suffix.lower() in AUDIO_EXTENSIONS]
+    hashed_paths = [path for path in audio_paths if HASHED_FILENAME_RE.fullmatch(path.stem)]
+    registered = set(MediaFile.objects.filter(path__in=[str(path) for path in hashed_paths]).values_list("path", flat=True))
+    skipped = [path for path in hashed_paths if str(path) in registered]
+    if skipped:
+        skipped_set = set(skipped)
+        audio_paths = [path for path in audio_paths if path not in skipped_set]
+    if progress:
+        progress(f"{directory.path}: {len(audio_paths)} arquivos para processar, {len(skipped)} ja registrados (ignorados)")
+
+    for index, path in enumerate(audio_paths, start=1):
 
         sha256 = calculate_sha256(path)
         metadata = extract_audio_metadata(path)
         decision = classify_duplicate(path=path, metadata=metadata, sha256=sha256)
         track = decision.track or find_or_create_track(path=path, metadata=metadata)
         import_status = determine_import_status(decision)
+        if (
+            delete_duplicates
+            and import_status == MediaFile.ImportStatus.DUPLICATE
+            and decision.reason == "sha256"
+            and decision.duplicate_of
+            and Path(decision.duplicate_of.path).is_file()
+        ):
+            path.unlink()
+            files_seen += 1
+            if progress:
+                progress(f"[{index}/{len(audio_paths)}] duplicado apagado: {path.name}")
+            continue
         source_path = str(path)
         storage_path = ""
         current_path = path
@@ -125,6 +157,8 @@ def scan_directory(directory: MonitoredDirectory) -> ScanResult:
             current_path, storage_path = move_to_library_storage(path=path, sha256=sha256)
         size_bytes = current_path.stat().st_size
         files_seen += 1
+        if progress:
+            progress(f"[{index}/{len(audio_paths)}] {import_status}: {path.name}")
         media_file, created = MediaFile.objects.update_or_create(
             path=str(current_path),
             defaults={

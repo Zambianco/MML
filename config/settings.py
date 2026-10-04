@@ -115,6 +115,11 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": BASE_DIR / "db.sqlite3",
+        "OPTIONS": {
+            "timeout": 30,
+            "transaction_mode": "IMMEDIATE",
+            "init_command": "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;",
+        },
     }
     if USE_SQLITE
     else {
@@ -145,6 +150,7 @@ CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/2
 CELERY_TASK_TRACK_STARTED = True
 SLSKD_BASE_URL = os.getenv("SLSKD_BASE_URL", "http://localhost:5030").rstrip("/")
 SLSKD_REQUEST_TIMEOUT_SECONDS = env_float("SLSKD_REQUEST_TIMEOUT_SECONDS", 5.0)
+SLSKD_SEARCH_WORKERS = 1 if TESTING else int(os.getenv("SLSKD_SEARCH_WORKERS", "1"))
 SLSKD_API_KEY = os.getenv("SLSKD_API_KEY", "12345678901234567890")
 if SLSKD_API_KEY == "change-me":
     SLSKD_API_KEY = "12345678901234567890"

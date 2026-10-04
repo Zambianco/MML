@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Manifesto | My Music Library{% endblock %}
+
+{% block content %}
+<main class="container app-page py-4">
+    <div class="app-page-header">
+        <div>
+            <p class="page-kicker mb-1"><i class="bi bi-check2-all me-1"></i>Downloads</p>
+            <h1 class="h3 mb-0 fw-bold">Enviar manifesto</h1>
+            <p class="text-secondary small mt-1 mb-0">Exporte os downloads concluidos (com ISRC) e envie o manifesto de volta para marcar as musicas com o mesmo ISRC como concluidas.</p>
+        </div>
+    </div>
+
+    {% if messages %}
+        <div class="mb-4">
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags|default:'info' }} mb-2">{{ message }}</div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body p-4 d-flex align-items-center justify-content-between gap-3">
+            <div>
+                <h2 class="h5 mb-1">Gerar manifesto</h2>
+                <p class="text-secondary small mb-0">CSV com ISRC, nome, artista e album dos downloads concluidos.</p>
+            </div>
+            <a class="btn btn-outline-dark" href="{% url 'downloads-manifest-export' %}"><i class="bi bi-download me-1"></i>Baixar</a>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0">
+        <div class="card-body p-4">
+            <p class="text-secondary small">
+                Aceita o CSV exportado aqui (coluna ISRC) ou qualquer texto/lista com ISRCs. Itens das importacoes com o mesmo ISRC sao marcados como concluidos.
+            </p>
+            <form method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                {% if form.non_field_errors %}
+                    <div class="text-danger small mb-3">{{ form.non_field_errors|join:", " }}</div>
+                {% endif %}
+                <div class="mb-3">
+                    <label class="form-label" for="{{ form.file.id_for_label }}">{{ form.file.label }}</label>
+                    {{ form.file }}
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="{{ form.manifest_text.id_for_label }}">{{ form.manifest_text.label }}</label>
+                    {{ form.manifest_text }}
+                </div>
+                <button class="btn btn-dark w-100" type="submit">
+                    <i class="bi bi-check2-all me-1"></i>Marcar como concluidas
+                </button>
+            </form>
+        </div>
+    </div>
+</main>
+{% endblock %}

@@ -14,9 +14,18 @@ class Command(BaseCommand):
             type=int,
             help="Scan only a specific monitored directory. Can be used multiple times.",
         )
+        parser.add_argument(
+            "--delete-duplicates",
+            action="store_true",
+            help="Delete source files that are exact (sha256) copies of a file already in the library.",
+        )
 
     def handle(self, *args, **options):
-        result = scan_monitored_directories(directory_ids=options["directory_ids"])
+        result = scan_monitored_directories(
+            directory_ids=options["directory_ids"],
+            delete_duplicates=options["delete_duplicates"],
+            progress=self.stdout.write,
+        )
         self.stdout.write(
             self.style.SUCCESS(
                 "Scanned {directories_scanned} directories, found {files_seen} audio files, "

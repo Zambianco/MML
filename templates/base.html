@@ -665,6 +665,7 @@
                 <a class="app-tab {% if request.resolver_match.url_name == 'library-dashboard' %}active{% endif %}" href="{% url 'library-dashboard' %}">Biblioteca</a>
                 <a class="app-tab {% if request.resolver_match.url_name == 'downloads-files' %}active{% endif %}" href="{% url 'downloads-files' %}">Arquivos</a>
                 <a class="app-tab {% if request.resolver_match.url_name == 'downloads-import-list' or request.resolver_match.url_name == 'downloads-import-detail' %}active{% endif %}" href="{% url 'downloads-import-list' %}">Importacoes</a>
+                <a class="app-tab {% if request.resolver_match.url_name == 'downloads-manifest' %}active{% endif %}" href="{% url 'downloads-manifest' %}">Manifesto</a>
                 <a class="app-tab {% if request.resolver_match.url_name == 'api-index' %}active{% endif %}" href="{% url 'api-index' %}">API</a>
             </div>
             <div class="app-user">

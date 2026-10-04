@@ -1,9 +1,11 @@
 from django.urls import path
 
-from .views import cancel_round, download_files, file_cover, file_stream, import_detail, import_detail_fragment, import_list, item_download, item_query, item_search, item_skip_source, item_stream, item_transfer, music_player, process_round, refresh_status, slskd_log, toggle_favorite
+from .views import cancel_round, download_files, file_cover, file_stream, import_detail, import_detail_fragment, import_list, manifest_export, manifest_upload, item_download, item_query, item_search, item_skip_source, item_stream, item_transfer, music_player, process_round, refresh_status, slskd_log, toggle_favorite
 
 urlpatterns = [
     path("", import_list, name="downloads-import-list"),
+    path("manifesto/", manifest_upload, name="downloads-manifest"),
+    path("manifesto/exportar/", manifest_export, name="downloads-manifest-export"),
     path("arquivos/", download_files, name="downloads-files"),
     path("arquivos/tocar/", file_stream, name="downloads-file-stream"),
     path("arquivos/capa/", file_cover, name="downloads-file-cover"),
